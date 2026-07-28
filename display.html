@@ -77,6 +77,14 @@
     opacity:0;transition:opacity .5s ease;pointer-events:none;
   }
   #toast.show{opacity:1;}
+
+  #id-badge{
+    position:fixed;right:10px;bottom:10px;z-index:50;
+    font-family:var(--mono);font-size:11px;color:#55606a;
+    background:#0d1114cc;border:1px solid #23292f;padding:3px 9px;border-radius:999px;
+    letter-spacing:.05em;pointer-events:none;display:none;
+  }
+  #id-badge.show{display:block;}
 </style>
 </head>
 <body>
@@ -98,6 +106,7 @@
   <div id="stage"></div>
 </div>
 <div id="toast"></div>
+<div id="id-badge"></div>
 
 <script>
 (function(){
@@ -276,6 +285,9 @@
   var lastWidgetJSON = null;
   function startLoop(cfg){
     setupEl.style.display = 'none';
+    var badge = document.getElementById('id-badge');
+    badge.textContent = 'ID ' + cfg.deviceId.slice(-4).toUpperCase();
+    badge.classList.add('show');
     function tick(){
       req('PATCH', dbUrl(cfg), {lastSeen: Date.now()}).catch(function(){});
       req('GET', dbUrl(cfg)).then(function(data){
