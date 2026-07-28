@@ -22,10 +22,12 @@
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);}
   .wrap{max-width:980px;margin:0 auto;padding:32px 20px 80px;}
-  header{margin-bottom:28px;}
+  header{margin-bottom:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;}
   header .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--accent);text-transform:uppercase;}
   header h1{font-size:26px;margin:6px 0 4px;}
   header p{color:var(--muted);margin:0;font-size:14px;}
+  .whoami{font-size:12px;color:var(--muted);font-family:var(--mono);text-align:right;white-space:nowrap;}
+  .whoami button{margin-top:6px;}
 
   .grid{display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start;}
   @media (max-width:820px){ .grid{grid-template-columns:1fr;} }
@@ -41,14 +43,20 @@
     background:var(--panel-2);color:var(--fg);font-size:13px;font-family:var(--mono);
   }
   textarea{font-family:var(--sans);resize:vertical;min-height:64px;}
-  button{
-    cursor:pointer;border:none;border-radius:8px;font-size:13px;font-weight:600;padding:9px 14px;
-  }
+  button{cursor:pointer;border:none;border-radius:8px;font-size:13px;font-weight:600;padding:9px 14px;}
   .btn-primary{background:var(--accent);color:var(--accent-fg);}
   .btn-ghost{background:transparent;border:1px solid var(--line);color:var(--fg);}
   .btn-danger{background:transparent;border:1px solid var(--line);color:var(--danger);}
   .row{display:flex;gap:8px;}
   .row > *{flex:1;}
+  .err{color:var(--danger);font-size:13px;margin-top:10px;min-height:16px;}
+
+  /* auth screen */
+  .auth-wrap{max-width:380px;margin:80px auto 0;text-align:center;}
+  .auth-wrap .card{text-align:left;}
+  .tabs{display:flex;gap:8px;margin-bottom:16px;}
+  .tabs button{flex:1;background:var(--panel-2);border:1px solid var(--line);color:var(--muted);}
+  .tabs button.active{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);}
 
   /* pairing bezel */
   .bezel{
@@ -83,25 +91,49 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+
+<div class="wrap" id="auth-screen" style="display:none;">
+  <div class="auth-wrap">
+    <div class="eyebrow">SCREENWALL LITE</div>
+    <h1 style="font-size:22px;margin:6px 0 20px;">Přihlášení do administrace</h1>
+    <div class="card">
+      <div class="tabs">
+        <button id="tab-login" class="active">Přihlásit se</button>
+        <button id="tab-register">Vytvořit účet</button>
+      </div>
+      <label>Uživatelské jméno</label>
+      <input id="auth-username" autocomplete="username" placeholder="karel">
+      <label>Heslo</label>
+      <input id="auth-password" type="password" autocomplete="current-password" placeholder="alespoň 8 znaků">
+      <div class="row" style="margin-top:16px;">
+        <button class="btn-primary" id="auth-submit">Přihlásit se</button>
+      </div>
+      <div class="err" id="auth-err"></div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" id="app-screen" style="display:none;">
   <header>
-    <div class="eyebrow">ScreenWall Lite</div>
-    <h1>Zeď obrazovek</h1>
-    <p>Dej starým telefonům druhý život jako displeje — hodiny, počasí, fotorámeček, textová deska.</p>
+    <div>
+      <div class="eyebrow">ScreenWall Lite</div>
+      <h1>Zeď obrazovek</h1>
+      <p>Dej starým telefonům druhý život jako displeje — hodiny, počasí, fotorámeček, textová deska.</p>
+    </div>
+    <div class="whoami">
+      <div id="whoami-name"></div>
+      <button class="btn-ghost" id="btn-logout">Odhlásit se</button>
+    </div>
   </header>
 
   <div class="grid">
     <div>
       <div class="card">
-        <h2>Nastavení zdi</h2>
-        <label>Adresa Firebase Realtime Database</label>
-        <input id="cfg-db" placeholder="https://tvuj-projekt.firebaseio.com">
+        <h2>Zeď</h2>
         <label>Wall ID</label>
         <input id="cfg-wall" placeholder="např. domov" value="domov">
-        <label>Přístupový klíč (nepovinné)</label>
-        <input id="cfg-auth" placeholder="jen pokud máš uzamčená pravidla">
         <div class="row" style="margin-top:14px;">
-          <button class="btn-primary" id="btn-save-cfg">Uložit a spustit</button>
+          <button class="btn-primary" id="btn-load-wall">Přepnout / obnovit</button>
         </div>
       </div>
 
@@ -110,10 +142,10 @@
         <div class="bezel" id="bezel" style="display:none;">
           <img id="qr-img" alt="Párovací QR kód">
           <div class="wallcode" id="wall-label"></div>
-          <div class="hint">Naskenuj fotoaparátem telefonu.<br>Bez fotoaparátu zadej Wall ID a adresu DB ručně na display.html.</div>
+          <div class="hint">Naskenuj fotoaparátem telefonu.<br>Bez fotoaparátu vlož odkaz ručně na display.html.</div>
           <div class="link-row" id="pair-url"></div>
         </div>
-        <div class="empty" id="bezel-empty">Ulož nastavení zdi vlevo nahoře — QR kód se pak vygeneruje tady.</div>
+        <div class="empty" id="bezel-empty">Načítám párovací odkaz…</div>
       </div>
     </div>
 
@@ -127,63 +159,98 @@
     </div>
   </div>
 </div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 (function(){
   "use strict";
-  var LS_KEY = "screenwall_lite_admin_cfg";
-  var cfg = null;
+  var LS_WALL_KEY = "screenwall_lite_admin_wall";
   var poller = null;
+  var editingActive = false;
+  var focusTrackingWired = false;
+  var currentWall = "domov";
 
   var toastEl = document.getElementById('toast');
   function toast(msg){
     toastEl.textContent = msg;
     toastEl.classList.add('show');
     clearTimeout(toast._t);
-    toast._t = setTimeout(function(){ toastEl.classList.remove('show'); }, 2200);
+    toast._t = setTimeout(function(){ toastEl.classList.remove('show'); }, 2400);
   }
 
-  function wallBase(){
-    var base = cfg.db.replace(/\/$/,'');
-    return base + '/walls/' + encodeURIComponent(cfg.wall);
-  }
-  function withAuth(url){
-    return url + (cfg.auth ? (url.indexOf('?')>-1?'&':'?') + 'auth=' + encodeURIComponent(cfg.auth) : '');
-  }
-  function req(method, path, body){
-    return fetch(withAuth(wallBase() + path + '.json'), {
+  function api(method, path, body){
+    return fetch(path, {
       method: method,
-      headers: {'Content-Type':'application/json'},
+      credentials: 'same-origin',
+      headers: body !== undefined ? {'Content-Type':'application/json'} : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined
     }).then(function(r){
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      return r.json();
+      return r.json().catch(function(){ return {}; }).then(function(data){
+        if(!r.ok){ var e = new Error(data.error || ('HTTP '+r.status)); e.status = r.status; throw e; }
+        return data;
+      });
     });
   }
 
-  function loadCfg(){
-    try{ return JSON.parse(localStorage.getItem(LS_KEY)); }catch(e){ return null; }
+  // ---------- auth screens ----------
+  var mode = 'login';
+  function setMode(m){
+    mode = m;
+    document.getElementById('tab-login').classList.toggle('active', m==='login');
+    document.getElementById('tab-register').classList.toggle('active', m==='register');
+    document.getElementById('auth-submit').textContent = m==='login' ? 'Přihlásit se' : 'Vytvořit účet';
+    document.getElementById('auth-err').textContent = '';
   }
-  function saveCfg(c){ localStorage.setItem(LS_KEY, JSON.stringify(c)); }
+  document.getElementById('tab-login').addEventListener('click', function(){ setMode('login'); });
+  document.getElementById('tab-register').addEventListener('click', function(){ setMode('register'); });
 
-  function buildPairUrl(){
-    var here = location.href.replace(/admin\.html.*$/, 'display.html');
-    var url = here + '?wall=' + encodeURIComponent(cfg.wall) + '&db=' + encodeURIComponent(cfg.db);
-    if(cfg.auth) url += '&auth=' + encodeURIComponent(cfg.auth);
-    return url;
+  document.getElementById('auth-submit').addEventListener('click', function(){
+    var username = document.getElementById('auth-username').value.trim();
+    var password = document.getElementById('auth-password').value;
+    var errEl = document.getElementById('auth-err');
+    errEl.textContent = '';
+    var path = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    api('POST', path, {username: username, password: password}).then(function(data){
+      showApp(data.username);
+    }).catch(function(e){ errEl.textContent = e.message; });
+  });
+
+  document.getElementById('btn-logout').addEventListener('click', function(){
+    api('POST', '/api/auth/logout').then(function(){ location.reload(); });
+  });
+
+  function showAuth(){
+    document.getElementById('auth-screen').style.display = 'block';
+    document.getElementById('app-screen').style.display = 'none';
+  }
+  function showApp(username){
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = 'block';
+    document.getElementById('whoami-name').textContent = username;
+    var savedWall = localStorage.getItem(LS_WALL_KEY);
+    currentWall = savedWall || 'domov';
+    document.getElementById('cfg-wall').value = currentWall;
+    startWall();
   }
 
+  // ---------- wall / pairing ----------
   function refreshBezel(){
-    var url = buildPairUrl();
-    document.getElementById('bezel').style.display = 'flex';
-    document.getElementById('bezel-empty').style.display = 'none';
-    document.getElementById('qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url);
-    document.getElementById('wall-label').textContent = cfg.wall;
-    document.getElementById('pair-url').textContent = url;
+    document.getElementById('bezel-empty').style.display = 'block';
+    document.getElementById('bezel').style.display = 'none';
+    api('GET', '/api/pairing-link?wall=' + encodeURIComponent(currentWall)).then(function(data){
+      var url = location.origin + location.pathname.replace(/admin\.html.*$/, 'display.html') + '?token=' + encodeURIComponent(data.token);
+      document.getElementById('bezel').style.display = 'flex';
+      document.getElementById('bezel-empty').style.display = 'none';
+      document.getElementById('qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url);
+      document.getElementById('wall-label').textContent = currentWall;
+      document.getElementById('pair-url').textContent = url;
+    }).catch(function(e){
+      document.getElementById('bezel-empty').textContent = 'Nepodařilo se vygenerovat párovací odkaz: ' + e.message;
+    });
   }
 
-  // ---------- devices list ----------
+  // ---------- devices ----------
   var WIDGETS = [
     {type:'', label:'— žádný —'},
     {type:'clock', label:'Hodiny'},
@@ -192,7 +259,7 @@
     {type:'text', label:'Textová deska'}
   ];
 
-  function configFieldsHtml(id, type, config){
+  function configFieldsHtml(type, config){
     config = config || {};
     if(type === 'weather'){
       return '<div class="widget-cfg">' +
@@ -237,7 +304,7 @@
         '</div>' +
         '<label>Widget</label>' +
         '<select class="dev-widget-type">'+opts+'</select>' +
-        '<div class="dev-cfg-holder">' + configFieldsHtml(id, widget.type||'', widget.config) + '</div>' +
+        '<div class="dev-cfg-holder">' + configFieldsHtml(widget.type||'', widget.config) + '</div>' +
         '<div class="actions">' +
           '<button class="btn-danger dev-remove">Odebrat</button>' +
           '<button class="btn-primary dev-save">Uložit</button>' +
@@ -245,7 +312,7 @@
       '</div>';
   }
 
-  function readConfigFromCard(card, type){
+  function readConfigFromCard(card){
     var out = {};
     card.querySelectorAll('.dev-cfg-holder [data-k]').forEach(function(el){
       var k = el.getAttribute('data-k');
@@ -259,39 +326,38 @@
 
   function wireDeviceCard(card, id){
     card.querySelector('.dev-widget-type').addEventListener('change', function(){
-      var type = this.value;
-      card.querySelector('.dev-cfg-holder').innerHTML = configFieldsHtml(id, type, {});
+      card.querySelector('.dev-cfg-holder').innerHTML = configFieldsHtml(this.value, {});
     });
     card.querySelector('.dev-save').addEventListener('click', function(){
       var name = card.querySelector('.dev-name').value;
       var type = card.querySelector('.dev-widget-type').value;
-      var widget = type ? {type: type, config: readConfigFromCard(card, type)} : null;
-      Promise.all([
-        req('PATCH', '/devices/'+id, {name: name}),
-        req('PATCH', '/devices/'+id, {widget: widget})
-      ]).then(function(){ toast('Uloženo — displej se aktualizuje během pár vteřin.'); })
-        .catch(function(e){ toast('Chyba: '+e.message); });
+      var widget = type ? {type: type, config: readConfigFromCard(card)} : null;
+      var qs = '?wall=' + encodeURIComponent(currentWall);
+      api('PATCH', '/api/devices/' + id + qs, {name: name, widget: widget})
+        .then(function(){ toast('Uloženo — displej se aktualizuje během pár vteřin.'); })
+        .catch(function(e){ toast('Chyba: ' + e.message); });
     });
     card.querySelector('.dev-remove').addEventListener('click', function(){
       if(!confirm('Odebrat tuto obrazovku ze zdi?')) return;
-      req('DELETE', '/devices/'+id).then(function(){ loadDevices(); toast('Obrazovka odebrána.'); });
+      var qs = '?wall=' + encodeURIComponent(currentWall);
+      api('DELETE', '/api/devices/' + id + qs).then(function(){ loadDevices(); toast('Obrazovka odebrána.'); });
     });
   }
 
-  var editingActive = false;
   function loadDevices(){
     if(editingActive) return;
-    req('GET', '/devices').then(function(data){
+    api('GET', '/api/devices?wall=' + encodeURIComponent(currentWall)).then(function(data){
       var list = document.getElementById('devices');
       var countEl = document.getElementById('dev-count');
-      if(!data){
+      var ids = Object.keys(data || {});
+      if(!ids.length){
         list.innerHTML = '<div class="empty">Zatím žádné obrazovky. Naspárujte první vlevo.</div>';
         countEl.textContent = '';
         return;
       }
-      var ids = Object.keys(data).sort(function(a,b){
-        var oa = (Date.now() - (data[a].lastSeen||0)) < 15000;
-        var ob = (Date.now() - (data[b].lastSeen||0)) < 15000;
+      ids.sort(function(a,b){
+        var oa = (Date.now()-(data[a].lastSeen||0))<15000;
+        var ob = (Date.now()-(data[b].lastSeen||0))<15000;
         if(oa !== ob) return oa ? -1 : 1;
         return (data[a].name||a).localeCompare(data[b].name||b);
       });
@@ -305,7 +371,6 @@
     });
   }
 
-  var focusTrackingWired = false;
   function wireFocusTracking(){
     if(focusTrackingWired) return;
     focusTrackingWired = true;
@@ -321,34 +386,28 @@
     });
   }
 
-  function start(){
-    refreshBezel();
+  function startWall(){
     wireFocusTracking();
+    refreshBezel();
     loadDevices();
     if(poller) clearInterval(poller);
     poller = setInterval(loadDevices, 4000);
   }
 
+  document.getElementById('btn-load-wall').addEventListener('click', function(){
+    currentWall = document.getElementById('cfg-wall').value.trim() || 'domov';
+    localStorage.setItem(LS_WALL_KEY, currentWall);
+    startWall();
+  });
+
+  // ---------- boot ----------
   function boot(){
-    var saved = loadCfg();
-    if(saved){
-      document.getElementById('cfg-db').value = saved.db || '';
-      document.getElementById('cfg-wall').value = saved.wall || 'domov';
-      document.getElementById('cfg-auth').value = saved.auth || '';
-      if(saved.db){ cfg = saved; start(); }
-    }
-    document.getElementById('btn-save-cfg').addEventListener('click', function(){
-      var db = document.getElementById('cfg-db').value.trim();
-      var wall = document.getElementById('cfg-wall').value.trim() || 'domov';
-      var auth = document.getElementById('cfg-auth').value.trim();
-      if(!db){ toast('Vyplň adresu Firebase Realtime Database.'); return; }
-      cfg = {db: db, wall: wall, auth: auth};
-      saveCfg(cfg);
-      start();
-      toast('Nastavení uloženo.');
+    api('GET', '/api/auth/me').then(function(data){
+      showApp(data.username);
+    }).catch(function(){
+      showAuth();
     });
   }
-
   document.addEventListener('DOMContentLoaded', boot);
 })();
 </script>

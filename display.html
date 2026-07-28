@@ -24,10 +24,7 @@
   }
   #app{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
 
-  /* --- setup / pairing screen --- */
-  .setup{
-    width:100%;max-width:420px;padding:28px;text-align:center;
-  }
+  .setup{width:100%;max-width:420px;padding:28px;text-align:center;}
   .setup h1{font-size:20px;margin:0 0 4px;letter-spacing:.02em;}
   .setup p{color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 20px;}
   .setup label{display:block;text-align:left;font-size:12px;color:var(--muted);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.06em;}
@@ -46,7 +43,6 @@
     letter-spacing:.05em;
   }
 
-  /* --- widget stage --- */
   #stage{position:fixed;inset:0;display:none;align-items:center;justify-content:center;}
   #stage.on{display:flex;}
 
@@ -92,13 +88,9 @@
   <div class="setup" id="setup">
     <div class="badge">SCREENWALL LITE · DISPLEJ</div>
     <h1>Připojit tuto obrazovku</h1>
-    <p>Naskenuj párovací QR kód v administraci na počítači. Pokud tento telefon nemá fotoaparát, zadej údaje ručně níže.</p>
-    <label>Kód zdi (Wall ID)</label>
-    <input id="in-wall" placeholder="např. domov" autocomplete="off">
-    <label>Adresa Firebase Realtime Database</label>
-    <input id="in-db" placeholder="https://tvuj-projekt.firebaseio.com" autocomplete="off">
-    <label>Přístupový klíč (nepovinné)</label>
-    <input id="in-auth" placeholder="jen pokud ho admin nastavil" autocomplete="off">
+    <p>Naskenuj párovací QR kód v administraci na počítači. Pokud tento telefon nemá fotoaparát, vlož párovací odkaz nebo kód ručně níže.</p>
+    <label>Párovací odkaz nebo kód</label>
+    <input id="in-token" placeholder="vlož odkaz z administrace" autocomplete="off">
     <button id="btn-connect">Připojit obrazovku</button>
     <div class="err" id="setup-err"></div>
   </div>
@@ -129,8 +121,11 @@
     return m ? decodeURIComponent(m[1]) : null;
   }
 
-  function uid(){
-    return 'd-' + Math.random().toString(36).slice(2,8) + Date.now().toString(36).slice(-4);
+  function extractToken(input){
+    input = (input || '').trim();
+    var m = /[?&]token=([^&]+)/.exec(input);
+    if(m) return decodeURIComponent(m[1]);
+    return input;
   }
 
   function loadCfg(){
@@ -139,20 +134,15 @@
   function saveCfg(cfg){ localStorage.setItem(LS_KEY, JSON.stringify(cfg)); }
   function clearCfg(){ localStorage.removeItem(LS_KEY); }
 
-  // ---------- Firebase REST helpers ----------
-  function dbUrl(cfg, path){
-    var base = cfg.db.replace(/\/$/,'');
-    var url = base + '/walls/' + encodeURIComponent(cfg.wall) + '/devices/' + cfg.deviceId + (path||'') + '.json';
-    return url + (cfg.auth ? '?auth=' + encodeURIComponent(cfg.auth) : '');
-  }
-  function req(method, url, body){
-    return fetch(url, {
+  function api(method, path, body){
+    return fetch(path, {
       method: method,
-      headers: {'Content-Type':'application/json'},
+      headers: body !== undefined ? {'Content-Type':'application/json'} : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined
     }).then(function(r){
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      return r.json();
+      return r.json().catch(function(){ return {}; }).then(function(data){
+        return {ok: r.ok, status: r.status, data: data};
+      });
     });
   }
 
@@ -162,7 +152,6 @@
     if('wakeLock' in navigator){
       navigator.wakeLock.request('screen').then(function(wl){
         wakeLock = wl;
-        wl.addEventListener('release', function(){});
       }).catch(function(){ startVideoFallback(); });
       document.addEventListener('visibilitychange', function(){
         if(document.visibilityState === 'visible' && !wakeLock){
@@ -174,7 +163,6 @@
     }
   }
   function startVideoFallback(){
-    // classic "invisible looping silent video" trick for phones without the Wake Lock API
     var v = document.createElement('video');
     v.setAttribute('playsinline','');
     v.muted = true; v.loop = true; v.autoplay = true;
@@ -288,48 +276,47 @@
     var badge = document.getElementById('id-badge');
     badge.textContent = 'ID ' + cfg.deviceId.slice(-4).toUpperCase();
     badge.classList.add('show');
+
     function tick(){
-      req('PATCH', dbUrl(cfg), {lastSeen: Date.now()}).catch(function(){});
-      req('GET', dbUrl(cfg)).then(function(data){
-        if(data === null){
+      var url = '/api/device-sync?id=' + encodeURIComponent(cfg.deviceId) + '&token=' + encodeURIComponent(cfg.deviceToken);
+      api('GET', url).then(function(res){
+        if(res.status === 404 || res.data.removed){
           toast('Zařízení bylo v administraci odebráno.');
           clearCfg();
           setTimeout(function(){ location.reload(); }, 2500);
           return;
         }
-        var wJSON = JSON.stringify(data.widget || null);
+        if(!res.ok){ return; /* offline blip or server hiccup, retry next tick */ }
+        var wJSON = JSON.stringify(res.data.widget || null);
         if(wJSON !== lastWidgetJSON){
           lastWidgetJSON = wJSON;
-          renderWidget(data.widget);
+          renderWidget(res.data.widget);
         }
-      }).catch(function(){ /* offline blip, try again next tick */ });
+      }).catch(function(){ /* network blip, retry next tick */ });
     }
     tick();
     setInterval(tick, 4000);
   }
 
-  function register(cfg){
-    var initial = {
-      name: 'Displej ' + cfg.deviceId.slice(-4),
-      connectedAt: Date.now(),
-      lastSeen: Date.now(),
-      resolution: screen.width + '×' + screen.height,
-      ua: navigator.userAgent.slice(0,140),
-      widget: null
-    };
-    return req('PUT', dbUrl(cfg), initial);
-  }
-
-  function connect(wall, db, auth){
+  function connect(rawInput){
     var errEl = document.getElementById('setup-err');
     errEl.textContent = '';
-    if(!wall || !db){ errEl.textContent = 'Vyplň Wall ID i adresu databáze.'; return; }
-    var cfg = { wall: wall.trim(), db: db.trim(), auth: (auth||'').trim(), deviceId: uid() };
-    register(cfg).then(function(){
+    var token = extractToken(rawInput);
+    if(!token){ errEl.textContent = 'Vlož párovací odkaz nebo kód.'; return; }
+    api('POST', '/api/pair', {
+      token: token,
+      resolution: screen.width + '×' + screen.height,
+      ua: navigator.userAgent.slice(0,140)
+    }).then(function(res){
+      if(!res.ok){
+        errEl.textContent = res.data.error || 'Párování se nepodařilo.';
+        return;
+      }
+      var cfg = { deviceId: res.data.deviceId, deviceToken: res.data.deviceToken };
       saveCfg(cfg);
       startLoop(cfg);
     }).catch(function(e){
-      errEl.textContent = 'Nepodařilo se připojit (zkontroluj adresu databáze a pravidla přístupu). ' + e.message;
+      errEl.textContent = 'Nepodařilo se připojit: ' + e.message;
     });
   }
 
@@ -337,23 +324,18 @@
   function boot(){
     keepAwake();
     var saved = loadCfg();
-    if(saved && saved.db && saved.wall && saved.deviceId){
+    if(saved && saved.deviceId && saved.deviceToken){
       startLoop(saved);
       return;
     }
-    var wall = qs('wall'), db = qs('db'), auth = qs('auth');
-    if(wall && db){
-      connect(wall, db, auth);
+    var tokenFromUrl = qs('token');
+    if(tokenFromUrl){
+      connect(tokenFromUrl);
       return;
     }
-    // manual pairing form
     setupEl.style.display = 'block';
     document.getElementById('btn-connect').addEventListener('click', function(){
-      connect(
-        document.getElementById('in-wall').value,
-        document.getElementById('in-db').value,
-        document.getElementById('in-auth').value
-      );
+      connect(document.getElementById('in-token').value);
     });
   }
 
