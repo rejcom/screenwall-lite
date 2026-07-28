@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<title>ScreenWall Lite — displej</title>
+<style>
+  :root{
+    --bg:#0b0d10;
+    --fg:#eef1f4;
+    --muted:#7b8794;
+    --accent:#4fb286;
+    --amber:#e2a53a;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;width:100%;height:100%;
+    background:var(--bg);color:var(--fg);
+    font-family:var(--sans);
+    overflow:hidden;
+    -webkit-user-select:none;user-select:none;
+  }
+  #app{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+
+  /* --- setup / pairing screen --- */
+  .setup{
+    width:100%;max-width:420px;padding:28px;text-align:center;
+  }
+  .setup h1{font-size:20px;margin:0 0 4px;letter-spacing:.02em;}
+  .setup p{color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 20px;}
+  .setup label{display:block;text-align:left;font-size:12px;color:var(--muted);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.06em;}
+  .setup input{
+    width:100%;padding:12px 14px;border-radius:10px;border:1px solid #2a3138;
+    background:#12161a;color:var(--fg);font-size:16px;font-family:var(--mono);
+  }
+  .setup button{
+    margin-top:22px;width:100%;padding:14px;border-radius:10px;border:none;
+    background:var(--accent);color:#06110c;font-size:16px;font-weight:600;cursor:pointer;
+  }
+  .setup .err{color:#e0645c;font-size:13px;margin-top:12px;min-height:16px;}
+  .badge{
+    display:inline-block;margin-bottom:18px;padding:4px 10px;border-radius:999px;
+    border:1px solid #2a3138;color:var(--muted);font-size:11px;font-family:var(--mono);
+    letter-spacing:.05em;
+  }
+
+  /* --- widget stage --- */
+  #stage{position:fixed;inset:0;display:none;align-items:center;justify-content:center;}
+  #stage.on{display:flex;}
+
+  .w-clock{text-align:center;}
+  .w-clock .time{font-family:var(--mono);font-size:min(22vw,180px);font-weight:600;letter-spacing:.02em;line-height:1;}
+  .w-clock .date{margin-top:10px;font-size:min(4.5vw,28px);color:var(--muted);text-transform:capitalize;}
+
+  .w-weather{text-align:center;padding:20px;}
+  .w-weather .icon{font-size:min(28vw,220px);line-height:1;}
+  .w-weather .temp{font-family:var(--mono);font-size:min(14vw,110px);font-weight:600;margin-top:4px;}
+  .w-weather .desc{font-size:min(5vw,30px);color:var(--muted);margin-top:6px;}
+  .w-weather .place{font-size:min(3.4vw,18px);color:#4a5560;margin-top:14px;font-family:var(--mono);}
+
+  .w-text{max-width:90vw;text-align:center;white-space:pre-wrap;line-height:1.4;}
+
+  .w-photo{position:fixed;inset:0;background:#000;}
+  .w-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity 1.2s ease;}
+  .w-photo img.show{opacity:1;}
+
+  .w-empty{text-align:center;color:var(--muted);}
+  .w-empty .dot{width:10px;height:10px;border-radius:50%;background:var(--amber);display:inline-block;margin-bottom:14px;animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+
+  #toast{
+    position:fixed;left:50%;bottom:22px;transform:translateX(-50%);
+    background:#12161acc;border:1px solid #2a3138;color:var(--muted);
+    padding:8px 14px;border-radius:999px;font-size:12px;font-family:var(--mono);
+    opacity:0;transition:opacity .5s ease;pointer-events:none;
+  }
+  #toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="setup" id="setup">
+    <div class="badge">SCREENWALL LITE · DISPLEJ</div>
+    <h1>Připojit tuto obrazovku</h1>
+    <p>Naskenuj párovací QR kód v administraci na počítači. Pokud tento telefon nemá fotoaparát, zadej údaje ručně níže.</p>
+    <label>Kód zdi (Wall ID)</label>
+    <input id="in-wall" placeholder="např. domov" autocomplete="off">
+    <label>Adresa Firebase Realtime Database</label>
+    <input id="in-db" placeholder="https://tvuj-projekt.firebaseio.com" autocomplete="off">
+    <label>Přístupový klíč (nepovinné)</label>
+    <input id="in-auth" placeholder="jen pokud ho admin nastavil" autocomplete="off">
+    <button id="btn-connect">Připojit obrazovku</button>
+    <div class="err" id="setup-err"></div>
+  </div>
+
+  <div id="stage"></div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  var LS_KEY = "screenwall_lite_device_cfg";
+  var stage = document.getElementById('stage');
+  var setupEl = document.getElementById('setup');
+  var toastEl = document.getElementById('toast');
+
+  function toast(msg, ms){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function(){ toastEl.classList.remove('show'); }, ms || 2600);
+  }
+
+  function qs(name){
+    var m = new RegExp('[?&]'+name+'=([^&]+)').exec(location.search);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  function uid(){
+    return 'd-' + Math.random().toString(36).slice(2,8) + Date.now().toString(36).slice(-4);
+  }
+
+  function loadCfg(){
+    try{ return JSON.parse(localStorage.getItem(LS_KEY)); }catch(e){ return null; }
+  }
+  function saveCfg(cfg){ localStorage.setItem(LS_KEY, JSON.stringify(cfg)); }
+  function clearCfg(){ localStorage.removeItem(LS_KEY); }
+
+  // ---------- Firebase REST helpers ----------
+  function dbUrl(cfg, path){
+    var base = cfg.db.replace(/\/$/,'');
+    var url = base + '/walls/' + encodeURIComponent(cfg.wall) + '/devices/' + cfg.deviceId + (path||'') + '.json';
+    return url + (cfg.auth ? '?auth=' + encodeURIComponent(cfg.auth) : '');
+  }
+  function req(method, url, body){
+    return fetch(url, {
+      method: method,
+      headers: {'Content-Type':'application/json'},
+      body: body !== undefined ? JSON.stringify(body) : undefined
+    }).then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    });
+  }
+
+  // ---------- Wake lock (+ old-browser fallback) ----------
+  var wakeLock = null;
+  function keepAwake(){
+    if('wakeLock' in navigator){
+      navigator.wakeLock.request('screen').then(function(wl){
+        wakeLock = wl;
+        wl.addEventListener('release', function(){});
+      }).catch(function(){ startVideoFallback(); });
+      document.addEventListener('visibilitychange', function(){
+        if(document.visibilityState === 'visible' && !wakeLock){
+          navigator.wakeLock.request('screen').then(function(wl){ wakeLock = wl; }).catch(function(){});
+        }
+      });
+    } else {
+      startVideoFallback();
+    }
+  }
+  function startVideoFallback(){
+    // classic "invisible looping silent video" trick for phones without the Wake Lock API
+    var v = document.createElement('video');
+    v.setAttribute('playsinline','');
+    v.muted = true; v.loop = true; v.autoplay = true;
+    v.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;';
+    v.src = 'data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAAAym1kYXQAAAAoAWWNb1pRAgIJx6jgAAAADAAAAgAgICBAECAg';
+    document.body.appendChild(v);
+    v.play().catch(function(){});
+  }
+
+  // ---------- Widget rendering ----------
+  var cleanup = null;
+  function renderWidget(widget){
+    if(cleanup){ try{ cleanup(); }catch(e){} cleanup = null; }
+    stage.className = 'on';
+    if(!widget || !widget.type){ return renderEmpty(); }
+    if(widget.type === 'clock') return renderClock(widget.config||{});
+    if(widget.type === 'weather') return renderWeather(widget.config||{});
+    if(widget.type === 'photo') return renderPhoto(widget.config||{});
+    if(widget.type === 'text') return renderText(widget.config||{});
+    return renderEmpty();
+  }
+
+  function renderEmpty(){
+    stage.innerHTML = '<div class="w-empty"><span class="dot"></span><div>Obrazovka je připojená.<br>Čeká na přiřazení widgetu v administraci.</div></div>';
+  }
+
+  function renderClock(cfg){
+    stage.innerHTML = '<div class="w-clock"><div class="time" id="ck-time"></div><div class="date" id="ck-date"></div></div>';
+    var t = document.getElementById('ck-time'), d = document.getElementById('ck-date');
+    var h24 = cfg.format !== '12';
+    function tick(){
+      var now = new Date();
+      t.textContent = now.toLocaleTimeString('cs-CZ', h24 ? {hour:'2-digit',minute:'2-digit'} : {hour:'2-digit',minute:'2-digit',hour12:true});
+      d.textContent = now.toLocaleDateString('cs-CZ', {weekday:'long', day:'numeric', month:'long'});
+    }
+    tick();
+    var iv = setInterval(tick, 1000);
+    cleanup = function(){ clearInterval(iv); };
+  }
+
+  function renderWeather(cfg){
+    var lat = cfg.lat || 49.7475, lon = cfg.lon || 13.3776, place = cfg.place || 'Plzeň';
+    stage.innerHTML = '<div class="w-weather"><div class="icon" id="wx-icon">·</div><div class="temp" id="wx-temp">–°</div><div class="desc" id="wx-desc">Načítám počasí…</div><div class="place">' + place + '</div></div>';
+    var WMO = {0:['jasno','☀️'],1:['skoro jasno','🌤️'],2:['polojasno','⛅'],3:['zataženo','☁️'],
+      45:['mlha','🌫️'],48:['mlha, jinovatka','🌫️'],
+      51:['slabé mrholení','🌦️'],53:['mrholení','🌦️'],55:['silné mrholení','🌧️'],
+      56:['mrznoucí mrholení','🌧️'],57:['silné mrznoucí mrholení','🌧️'],
+      61:['slabý déšť','🌦️'],63:['déšť','🌧️'],65:['silný déšť','🌧️'],
+      66:['mrznoucí déšť','🌧️'],67:['silný mrznoucí déšť','🌧️'],
+      71:['slabé sněžení','🌨️'],73:['sněžení','🌨️'],75:['silné sněžení','❄️'],77:['sněhové zrno','❄️'],
+      80:['přeháňky','🌦️'],81:['silnější přeháňky','🌧️'],82:['prudké přeháňky','⛈️'],
+      85:['sněhové přeháňky','🌨️'],86:['silné sněhové přeháňky','❄️'],
+      95:['bouřka','⛈️'],96:['bouřka s kroupami','⛈️'],99:['silná bouřka s kroupami','⛈️']};
+    function load(){
+      var url = 'https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code,wind_speed_10m&timezone=Europe%2FPrague';
+      fetch(url).then(function(r){return r.json();}).then(function(data){
+        var c = data.current || {};
+        var wmo = WMO[c.weather_code] || ['neznámo','🌡️'];
+        var iconEl = document.getElementById('wx-icon');
+        var tempEl = document.getElementById('wx-temp');
+        var descEl = document.getElementById('wx-desc');
+        if(iconEl) iconEl.textContent = wmo[1];
+        if(tempEl) tempEl.textContent = Math.round(c.temperature_2m) + '°C';
+        if(descEl) descEl.textContent = wmo[0] + ' · vítr ' + Math.round(c.wind_speed_10m) + ' km/h';
+      }).catch(function(){
+        var descEl = document.getElementById('wx-desc');
+        if(descEl) descEl.textContent = 'Počasí se nepodařilo načíst';
+      });
+    }
+    load();
+    var iv = setInterval(load, 10*60*1000);
+    cleanup = function(){ clearInterval(iv); };
+  }
+
+  function renderPhoto(cfg){
+    var images = (cfg.images || []).filter(Boolean);
+    stage.innerHTML = '<div class="w-photo" id="ph-wrap"></div>';
+    var wrap = document.getElementById('ph-wrap');
+    if(!images.length){
+      wrap.innerHTML = '<div class="w-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">Fotorámeček nemá žádné obrázky.<br>Doplň URL adresy v administraci.</div>';
+      return;
+    }
+    var a = document.createElement('img'), b = document.createElement('img');
+    wrap.appendChild(a); wrap.appendChild(b);
+    var idx = 0, showingA = true;
+    function step(){
+      var img = showingA ? b : a;
+      var old = showingA ? a : b;
+      img.onload = function(){
+        img.classList.add('show');
+        old.classList.remove('show');
+      };
+      img.src = images[idx % images.length];
+      idx++; showingA = !showingA;
+    }
+    step();
+    var iv = setInterval(step, (cfg.interval || 10) * 1000);
+    cleanup = function(){ clearInterval(iv); };
+  }
+
+  function renderText(cfg){
+    var size = cfg.fontSize || 42;
+    stage.innerHTML = '<div class="w-text" style="font-size:'+size+'px;">' +
+      (cfg.text || 'Textová deska je prázdná.').replace(/</g,'&lt;') + '</div>';
+  }
+
+  // ---------- Connection / polling loop ----------
+  var lastWidgetJSON = null;
+  function startLoop(cfg){
+    setupEl.style.display = 'none';
+    function tick(){
+      req('PATCH', dbUrl(cfg), {lastSeen: Date.now()}).catch(function(){});
+      req('GET', dbUrl(cfg)).then(function(data){
+        if(data === null){
+          toast('Zařízení bylo v administraci odebráno.');
+          clearCfg();
+          setTimeout(function(){ location.reload(); }, 2500);
+          return;
+        }
+        var wJSON = JSON.stringify(data.widget || null);
+        if(wJSON !== lastWidgetJSON){
+          lastWidgetJSON = wJSON;
+          renderWidget(data.widget);
+        }
+      }).catch(function(){ /* offline blip, try again next tick */ });
+    }
+    tick();
+    setInterval(tick, 4000);
+  }
+
+  function register(cfg){
+    var initial = {
+      name: 'Displej ' + cfg.deviceId.slice(-4),
+      connectedAt: Date.now(),
+      lastSeen: Date.now(),
+      resolution: screen.width + '×' + screen.height,
+      ua: navigator.userAgent.slice(0,140),
+      widget: null
+    };
+    return req('PUT', dbUrl(cfg), initial);
+  }
+
+  function connect(wall, db, auth){
+    var errEl = document.getElementById('setup-err');
+    errEl.textContent = '';
+    if(!wall || !db){ errEl.textContent = 'Vyplň Wall ID i adresu databáze.'; return; }
+    var cfg = { wall: wall.trim(), db: db.trim(), auth: (auth||'').trim(), deviceId: uid() };
+    register(cfg).then(function(){
+      saveCfg(cfg);
+      startLoop(cfg);
+    }).catch(function(e){
+      errEl.textContent = 'Nepodařilo se připojit (zkontroluj adresu databáze a pravidla přístupu). ' + e.message;
+    });
+  }
+
+  // ---------- Boot ----------
+  function boot(){
+    keepAwake();
+    var saved = loadCfg();
+    if(saved && saved.db && saved.wall && saved.deviceId){
+      startLoop(saved);
+      return;
+    }
+    var wall = qs('wall'), db = qs('db'), auth = qs('auth');
+    if(wall && db){
+      connect(wall, db, auth);
+      return;
+    }
+    // manual pairing form
+    setupEl.style.display = 'block';
+    document.getElementById('btn-connect').addEventListener('click', function(){
+      connect(
+        document.getElementById('in-wall').value,
+        document.getElementById('in-db').value,
+        document.getElementById('in-auth').value
+      );
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', boot);
+})();
+</script>
+</body>
+</html>
