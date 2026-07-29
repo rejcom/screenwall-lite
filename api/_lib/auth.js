@@ -53,6 +53,14 @@ function verify(token) {
   }
 }
 
+// Firebase RTDB keys can't contain ".", "#", "$", "[", "]", or be empty — but
+// usernames are often emails full of dots. Hash the username into a safe,
+// fixed-length key for use as a path segment; the human-readable username
+// itself is only ever stored as a *value*, never as a path.
+function usernameKey(username) {
+  return crypto.createHash("sha256").update(String(username)).digest("hex");
+}
+
 function parseCookies(req) {
   const header = (req.headers && req.headers.cookie) || "";
   const out = {};
@@ -88,5 +96,6 @@ module.exports = {
   verify,
   getSession,
   setSessionCookie,
-  clearSessionCookie
+  clearSessionCookie,
+  usernameKey
 };

@@ -1,6 +1,6 @@
 "use strict";
 const { rtdb } = require("../_lib/firebase");
-const { verifyPassword, setSessionCookie } = require("../_lib/auth");
+const { verifyPassword, setSessionCookie, usernameKey } = require("../_lib/auth");
 
 function parseBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
@@ -21,7 +21,7 @@ module.exports = async (req, res) => {
   const password = String(body.password || "");
 
   try {
-    const uid = await rtdb("GET", "/usernames/" + encodeURIComponent(username));
+    const uid = await rtdb("GET", "/usernames/" + usernameKey(username));
     if (!uid) {
       res.status(401).json({ error: "Neplatné jméno nebo heslo." });
       return;

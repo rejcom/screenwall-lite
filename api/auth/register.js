@@ -1,7 +1,7 @@
 "use strict";
 const crypto = require("crypto");
 const { rtdb } = require("../_lib/firebase");
-const { hashPassword, setSessionCookie } = require("../_lib/auth");
+const { hashPassword, setSessionCookie, usernameKey } = require("../_lib/auth");
 
 function parseBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
@@ -21,8 +21,8 @@ module.exports = async (req, res) => {
   const username = String(body.username || "").trim().toLowerCase();
   const password = String(body.password || "");
 
-  if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
-    res.status(400).json({ error: "Uživatelské jméno: 3–32 znaků, jen malá písmena, čísla, tečka, pomlčka, podtržítko." });
+  if (username.length < 3 || username.length > 64 || /\s/.test(username)) {
+    res.status(400).json({ error: "Uživatelské jméno: 3–64 znaků, bez mezer (e-mail je v pořádku)." });
     return;
   }
   if (password.length < 8) {
@@ -31,7 +31,8 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const existing = await rtdb("GET", "/usernames/" + encodeURIComponent(username));
+    const key = usernameKey(username);
+    const existing = await rtdb("GET", "/usernames/" + key);
     if (existing) {
       res.status(409).json({ error: "Toto uživatelské jméno už existuje." });
       return;
@@ -44,7 +45,7 @@ module.exports = async (req, res) => {
       passwordHash: hash,
       createdAt: Date.now()
     });
-    await rtdb("PUT", "/usernames/" + encodeURIComponent(username), uid);
+    await rtdb("PUT", "/usernames/" + key, uid);
     setSessionCookie(res, uid);
     res.status(200).json({ ok: true, uid, username });
   } catch (e) {
