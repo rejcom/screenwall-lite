@@ -162,6 +162,7 @@
           <div class="link-row" id="pair-url"></div>
         </div>
         <div class="empty" id="bezel-empty">Načítám párovací odkaz…</div>
+        <div id="pair-group-indicator" style="margin-top:12px;font-size:12px;color:var(--muted);text-align:center;"></div>
       </div>
 
       <div class="card">
@@ -170,12 +171,19 @@
           Sdílí tvou obrazovku/kartu z tohoto počítače na všechny displeje s widgetem „Sdílení obrazovky" —
           jako snímky každou ~1 vteřinu, ideální na přednášky.
         </p>
-        <video id="share-video" muted playsinline style="width:100%;border-radius:8px;background:#000;display:none;"></video>
+        <label>Kvalita přenášených snímků</label>
+        <select id="share-quality">
+          <option value="eco">Úsporná (menší přenos, více rozmazané)</option>
+          <option value="balanced" selected>Vyvážená</option>
+          <option value="high">Vysoká (ostřejší text, větší přenos)</option>
+        </select>
+        <video id="share-video" muted playsinline style="width:100%;border-radius:8px;background:#000;display:none;margin-top:10px;"></video>
         <canvas id="share-canvas" style="display:none;"></canvas>
         <div class="row" style="margin-top:10px;">
           <button class="btn-primary" id="btn-share">Spustit sdílení</button>
         </div>
         <div class="err" id="share-status" style="color:var(--muted);">Sdílení vypnuto</div>
+        <a id="share-download" class="btn-ghost" download style="display:none;margin-top:10px;text-align:center;text-decoration:none;padding:9px 14px;border-radius:8px;">Stáhnout záznam přednášky (.webm)</a>
       </div>
     </div>
 
@@ -268,6 +276,17 @@
   }
 
   // ---------- wall / pairing ----------
+  function updatePairGroupIndicator(){
+    var el = document.getElementById('pair-group-indicator');
+    if(!el) return;
+    var gid = wallSettingsCache.defaultGroupId;
+    if(gid && groupsCache[gid]){
+      el.textContent = 'Nově spárované displeje se přidají do skupiny „' + groupsCache[gid].name + '".';
+    } else {
+      el.textContent = 'Nově spárované displeje zatím nemají výchozí skupinu — nastav ji v kartě „Zeď" výše, ať se nové displeje řadí automaticky.';
+    }
+  }
+
   function refreshBezel(){
     document.getElementById('bezel-empty').style.display = 'block';
     document.getElementById('bezel').style.display = 'none';
@@ -278,6 +297,7 @@
       document.getElementById('qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url);
       document.getElementById('wall-label').textContent = currentWall;
       document.getElementById('pair-url').textContent = url;
+      updatePairGroupIndicator();
     }).catch(function(e){
       document.getElementById('bezel-empty').textContent = 'Nepodařilo se vygenerovat párovací odkaz: ' + e.message;
     });
@@ -494,6 +514,7 @@
     });
     sel.innerHTML = html;
     sel.value = wallSettingsCache.defaultGroupId || '';
+    updatePairGroupIndicator();
   }
 
   function loadGroups(){
@@ -510,12 +531,14 @@
     return api('GET', '/api/wall-settings?wall=' + encodeURIComponent(currentWall)).then(function(data){
       wallSettingsCache = data || {};
       document.getElementById('cfg-default-group').value = wallSettingsCache.defaultGroupId || '';
+      updatePairGroupIndicator();
     }).catch(function(){});
   }
 
   document.getElementById('cfg-default-group').addEventListener('change', function(){
     var groupId = this.value || null;
     wallSettingsCache.defaultGroupId = groupId;
+    updatePairGroupIndicator();
     api('PATCH', '/api/wall-settings?wall=' + encodeURIComponent(currentWall), {defaultGroupId: groupId})
       .then(function(){ toast('Výchozí skupina uložena.'); })
       .catch(function(e){ toast('Chyba: ' + e.message); });
@@ -560,20 +583,60 @@
     });
   }
 
-  // ---------- screen sharing (periodic frames) ----------
+  // ---------- screen sharing (periodic frames + local recording) ----------
   var shareStream = null, shareInterval = null;
+  var mediaRecorder = null, recordedChunks = [];
+
+  var QUALITY_PRESETS = {
+    eco:      { width: 960,  quality: 0.55 },
+    balanced: { width: 1280, quality: 0.75 },
+    high:     { width: 1600, quality: 0.85 }
+  };
 
   function pushFrame(){
     var video = document.getElementById('share-video');
     if(!video.videoWidth) return;
+    var presetKey = document.getElementById('share-quality').value;
+    var preset = QUALITY_PRESETS[presetKey] || QUALITY_PRESETS.balanced;
     var canvas = document.getElementById('share-canvas');
-    var scale = Math.min(1, 960 / video.videoWidth);
+    var scale = Math.min(1, preset.width / video.videoWidth);
     canvas.width = Math.round(video.videoWidth * scale);
     canvas.height = Math.round(video.videoHeight * scale);
     var ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    var dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+    var dataUrl = canvas.toDataURL('image/jpeg', preset.quality);
     api('PATCH', '/api/broadcast?wall=' + encodeURIComponent(currentWall), {frame: dataUrl}).catch(function(){});
+  }
+
+  function startRecording(stream){
+    recordedChunks = [];
+    document.getElementById('share-download').style.display = 'none';
+    if(typeof MediaRecorder === 'undefined'){ mediaRecorder = null; return; }
+    try{
+      var mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+      mediaRecorder = new MediaRecorder(stream, {mimeType: mimeType});
+      mediaRecorder.ondataavailable = function(e){ if(e.data && e.data.size) recordedChunks.push(e.data); };
+      mediaRecorder.start(1000);
+    }catch(e){ mediaRecorder = null; }
+  }
+
+  function finishRecording(){
+    if(!mediaRecorder){ return; }
+    var recorder = mediaRecorder;
+    mediaRecorder = null;
+    if(recorder.state === 'inactive'){ return; }
+    recorder.onstop = function(){
+      if(!recordedChunks.length) return;
+      var blob = new Blob(recordedChunks, {type:'video/webm'});
+      var url = URL.createObjectURL(blob);
+      var stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      var a = document.getElementById('share-download');
+      a.href = url;
+      a.download = 'prednaska-' + stamp + '.webm';
+      a.style.display = 'block';
+      toast('Záznam je připravený ke stažení.');
+    };
+    recorder.stop();
   }
 
   function startShare(){
@@ -581,7 +644,9 @@
       toast('Tento prohlížeč neumí sdílet obrazovku.');
       return;
     }
-    navigator.mediaDevices.getDisplayMedia({video:{frameRate:5}}).then(function(stream){
+    // Higher capture framerate is only for the local recording's smoothness —
+    // it doesn't affect how often frames get sent to displays (still ~1/s).
+    navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:15}}}).then(function(stream){
       shareStream = stream;
       var video = document.getElementById('share-video');
       video.style.display = 'block';
@@ -589,7 +654,9 @@
       video.play();
       document.getElementById('share-status').textContent = 'Sdílení aktivní · odesíláno každou ~1 s';
       document.getElementById('btn-share').textContent = 'Zastavit sdílení';
+      document.getElementById('share-download').style.display = 'none';
       stream.getVideoTracks()[0].addEventListener('ended', stopShare);
+      startRecording(stream);
       if(shareInterval) clearInterval(shareInterval);
       shareInterval = setInterval(pushFrame, 1000);
       setTimeout(pushFrame, 400);
@@ -601,6 +668,7 @@
   function stopShare(){
     if(shareInterval){ clearInterval(shareInterval); shareInterval = null; }
     if(shareStream){ shareStream.getTracks().forEach(function(t){ t.stop(); }); shareStream = null; }
+    finishRecording();
     var video = document.getElementById('share-video');
     video.style.display = 'none';
     video.srcObject = null;

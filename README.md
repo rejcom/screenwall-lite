@@ -71,6 +71,16 @@ Pro akce/konference nebo třeba hotelové televize je nepohodlné nastavovat ka�
 Displej lze kdykoliv ze skupiny vyjmout (výběrem „— žádná —" v jeho vlastní kartě) a nastavit mu
 vlastní widget ručně.
 
+**Příklad — QR v prezentaci, co rovnou pustí diváky do streamu:**
+
+1. Nastav Wall ID pro tu akci, např. `prednaska`, a „Přepnout / obnovit".
+2. V „Skupiny displejů" vytvoř skupinu „Stream" a jako widget jí nastav **Sdílení obrazovky (živé)**.
+3. V kartě „Zeď" zvol „Stream" jako výchozí skupinu — pod QR kódem se objeví potvrzení
+   („Nově spárované displeje se přidají do skupiny „Stream"").
+4. Vlož obrázek toho QR kódu (`qr-img` v kartě „Připojit novou obrazovku") do slidu prezentace.
+5. Kdokoliv ho během přednášky naskenuje, se rovnou objeví ve streamu — nic se nemusí ručně
+   přiřazovat.
+
 ## Widgety
 
 | Widget | Co potřebuje | Poznámka |
@@ -79,7 +89,7 @@ vlastní widget ručně.
 | Počasí | zeměpisné souřadnice | aktuální stav + výhled na 4 dny, zdarma přes Open-Meteo, bez API klíče |
 | Fotorámeček | seznam URL adres obrázků | interval střídání v sekundách |
 | Textová deska | volný text | velikost písma |
-| Sdílení obrazovky (živě) | nic v kartě displeje | obraz se pouští z panelu „Sdílení obrazovky" v administraci — libovolná karta/obrazovka z počítače, jako snímky po ~3 vteřinách; hodí se na přednášky. Vyžaduje prohlížeč s podporou `getDisplayMedia` (běžné desktopové Chrome/Edge/Firefox). |
+| Sdílení obrazovky (živě) | nic v kartě displeje | obraz se pouští z panelu „Sdílení obrazovky" v administraci — libovolná karta/obrazovka z počítače, jako snímky po ~1 vteřině, se třemi presety kvality; hodí se na přednášky. Vyžaduje prohlížeč s podporou `getDisplayMedia` (běžné desktopové Chrome/Edge/Firefox). |
 
 ## Jak to funguje pod kapotou
 
@@ -106,13 +116,19 @@ vlastní widget ručně.
   displeje jiného účtu (ověřeno testy při vývoji).
 - Sdílení obrazovky posílá zmenšené a komprimované JPEG snímky (ne video) přes stejnou Firebase
   databázi — je to jednoduché a spolehlivé, ale není určené na celodenní nepřetržitý provoz;
-  pro krátké přednáškové session je to v pohodě.
-- Snímek pro sdílení obrazovky se stahuje přes samostatný veřejný endpoint (`/api/broadcast-frame`)
-  s krátkým cachováním na hraně Vercelu (`s-maxage=1`). Díky tomu nezáleží, jestli se dívá 5, nebo
-  100 displejů najednou — na Firebase a na serverless funkce jde pořád jen jeden dotaz za vteřinu,
-  ne jeden za displej. Přenosová šířka pásma k divákům (displejům) roste s jejich počtem přirozeně
-  dál — to je fyzikální limit, který cachování neřeší, ale u desítek až stovek displejů je to
-  v rámci běžných limitů zdarma dostupných plánů.
+  pro krátké přednáškové session je to v pohodě. Kvalita snímků (rozlišení + komprese) se dá
+  přepnout v administraci mezi třemi presety (úsporná/vyvážená/vysoká).
+- Snímek pro sdílení obrazovky se stahuje přes veřejnou cacheovanou GET větev `/api/broadcast`
+  (`?uid=...&wall=...`, bez přihlášení) s krátkým cachováním na hraně Vercelu (`s-maxage=1`).
+  Díky tomu nezáleží, jestli se dívá 5, nebo 100 displejů najednou — na Firebase a na serverless
+  funkce jde pořád jen jeden dotaz za vteřinu, ne jeden za displej. Přenosová šířka pásma k divákům
+  (displejům) roste s jejich počtem přirozeně dál — to je fyzikální limit, který cachování neřeší,
+  ale u desítek až stovek displejů je to v rámci běžných limitů zdarma dostupných plánů.
+- Snímky posílané na displeje NEJSOU nikde ukládané (jen ten poslední, přepisovaný) — nehodí se
+  z nich rekonstruovat video. Místo toho administrace při sdílení paralelně nahrává skutečný
+  videozáznam přímo v prohlížeči (`MediaRecorder` nad stejným streamem, nezávisle na tom, jak
+  často se posílají snímky na displeje) a po zastavení sdílení nabídne stažení `.webm` souboru —
+  nic se přitom neukládá na server.
 
 ## Nápady na rozšíření
 
