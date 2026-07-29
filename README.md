@@ -83,6 +83,16 @@ vlastní widget ručně.
 
 ## Jak to funguje pod kapotou
 
+- Vercel Hobby plán dovolí max. 12 serverless funkcí na nasazení — proto je v `api/` jen 7 souborů
+  (mimo `_lib/`), i když endpointů je logicky víc. Příbuzné operace jsou spojené v jednom souboru
+  a rozlišené podle HTTP metody a/nebo query parametru (`?action=`, `?id=`):
+  - `api/auth.js` — registrace/přihlášení/odhlášení/„kdo jsem" (`?action=register|login|logout|me`)
+  - `api/devices.js` — výpis (bez `id`) i úprava/smazání jednoho displeje (`?id=...`)
+  - `api/groups.js` — výpis/vytvoření (bez `id`) i úprava/smazání jedné skupiny (`?id=...`)
+  - `api/pair.js` — `GET` vygeneruje párovací odkaz (admin), `POST` ho uplatní (telefon)
+  - `api/broadcast.js` — `GET` s `uid` v query je veřejný cachovaný snímek pro displeje,
+    cokoliv jiného je přihlášená správa vlastního vysílání
+
 - `admin.html` a `display.html` nikdy nemluví s Firebase přímo — jen s `/api/...` na stejné doméně.
 - Serverless funkce si k Firebase vyřizují přístup přes Google servisní účet (OAuth2 JWT), takže
   žádný tajný klíč neopouští server.

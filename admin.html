@@ -243,14 +243,14 @@
     var password = document.getElementById('auth-password').value;
     var errEl = document.getElementById('auth-err');
     errEl.textContent = '';
-    var path = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    var path = mode === 'login' ? '/api/auth?action=login' : '/api/auth?action=register';
     api('POST', path, {username: username, password: password}).then(function(data){
       showApp(data.username);
     }).catch(function(e){ errEl.textContent = e.message; });
   });
 
   document.getElementById('btn-logout').addEventListener('click', function(){
-    api('POST', '/api/auth/logout').then(function(){ location.reload(); });
+    api('POST', '/api/auth?action=logout').then(function(){ location.reload(); });
   });
 
   function showAuth(){
@@ -271,7 +271,7 @@
   function refreshBezel(){
     document.getElementById('bezel-empty').style.display = 'block';
     document.getElementById('bezel').style.display = 'none';
-    api('GET', '/api/pairing-link?wall=' + encodeURIComponent(currentWall)).then(function(data){
+    api('GET', '/api/pair?wall=' + encodeURIComponent(currentWall)).then(function(data){
       var url = location.origin + location.pathname.replace(/admin\.html.*$/, 'display.html') + '?token=' + encodeURIComponent(data.token);
       document.getElementById('bezel').style.display = 'flex';
       document.getElementById('bezel-empty').style.display = 'none';
@@ -416,15 +416,15 @@
         var type = typeSel ? typeSel.value : '';
         body.widget = type ? {type: type, config: readConfigFromHolder(card.querySelector('.dev-cfg-holder'))} : null;
       }
-      var qs = '?wall=' + encodeURIComponent(currentWall);
-      api('PATCH', '/api/devices/' + id + qs, body)
+      var qs = '?wall=' + encodeURIComponent(currentWall) + '&id=' + encodeURIComponent(id);
+      api('PATCH', '/api/devices' + qs, body)
         .then(function(){ toast('Uloženo — displej se aktualizuje během pár vteřin.'); })
         .catch(function(e){ toast('Chyba: ' + e.message); });
     });
     card.querySelector('.dev-remove').addEventListener('click', function(){
       if(!confirm('Odebrat tuto obrazovku ze zdi?')) return;
-      var qs = '?wall=' + encodeURIComponent(currentWall);
-      api('DELETE', '/api/devices/' + id + qs).then(function(){ loadDevices(); toast('Obrazovka odebrána.'); });
+      var qs = '?wall=' + encodeURIComponent(currentWall) + '&id=' + encodeURIComponent(id);
+      api('DELETE', '/api/devices' + qs).then(function(){ loadDevices(); toast('Obrazovka odebrána.'); });
     });
   }
 
@@ -458,15 +458,15 @@
       var name = card.querySelector('.grp-name').value.trim();
       var type = card.querySelector('.grp-widget-type').value;
       var widget = type ? {type: type, config: readConfigFromHolder(card.querySelector('.grp-cfg-holder'))} : null;
-      var qs = '?wall=' + encodeURIComponent(currentWall);
-      api('PATCH', '/api/groups/' + gid + qs, {name: name, widget: widget})
+      var qs = '?wall=' + encodeURIComponent(currentWall) + '&id=' + encodeURIComponent(gid);
+      api('PATCH', '/api/groups' + qs, {name: name, widget: widget})
         .then(function(){ toast('Skupina uložena.'); loadGroups(); })
         .catch(function(e){ toast('Chyba: ' + e.message); });
     });
     card.querySelector('.grp-remove').addEventListener('click', function(){
       if(!confirm('Smazat skupinu? Displeje v ní se přepnou na ruční nastavení.')) return;
-      var qs = '?wall=' + encodeURIComponent(currentWall);
-      api('DELETE', '/api/groups/' + gid + qs).then(function(){ loadGroups(); loadDevices(); toast('Skupina smazána.'); });
+      var qs = '?wall=' + encodeURIComponent(currentWall) + '&id=' + encodeURIComponent(gid);
+      api('DELETE', '/api/groups' + qs).then(function(){ loadGroups(); loadDevices(); toast('Skupina smazána.'); });
     });
   }
 
@@ -649,7 +649,7 @@
 
   // ---------- boot ----------
   function boot(){
-    api('GET', '/api/auth/me').then(function(data){
+    api('GET', '/api/auth?action=me').then(function(data){
       showApp(data.username);
     }).catch(function(){
       showAuth();

@@ -335,7 +335,7 @@
   function startFramePoll(uid, wall){
     stopFramePoll();
     function pull(){
-      fetch('/api/broadcast-frame?uid=' + encodeURIComponent(uid) + '&wall=' + encodeURIComponent(wall))
+      fetch('/api/broadcast?uid=' + encodeURIComponent(uid) + '&wall=' + encodeURIComponent(wall))
         .then(function(r){ return r.json(); })
         .then(function(data){ updateScreenshareFrame(data && data.frame); })
         .catch(function(){});
