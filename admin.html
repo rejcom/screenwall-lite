@@ -79,6 +79,13 @@
   .device-head input{flex:1;font-family:var(--sans);font-weight:600;font-size:14px;background:transparent;border:none;padding:2px 0;}
   .device-head .meta{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap;}
   .widget-cfg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+  .city-results{
+    position:absolute;left:0;right:0;top:100%;z-index:20;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+    margin-top:4px;max-height:180px;overflow-y:auto;display:none;
+  }
+  .city-result-item{padding:8px 11px;font-size:12px;cursor:pointer;}
+  .city-result-item:hover{background:var(--line);}
   .widget-cfg.full{grid-template-columns:1fr;}
   .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;}
   .empty{color:var(--muted);font-size:13px;text-align:center;padding:30px 10px;}
@@ -316,7 +323,12 @@
   function configFieldsHtml(type, config){
     config = config || {};
     if(type === 'weather'){
-      return '<div class="widget-cfg">' +
+      return '<div class="city-search-wrap" style="position:relative;margin-top:12px;">' +
+        '<label>Najít město (nepovinné — jen doplní souřadnice a název)</label>' +
+        '<input type="text" class="city-search" placeholder="např. Praha, Brno, Wien…" autocomplete="off">' +
+        '<div class="city-results"></div>' +
+        '</div>' +
+        '<div class="widget-cfg">' +
         '<div><label>Zeměpisná šířka</label><input data-k="lat" value="'+(config.lat!=null?config.lat:49.7475)+'"></div>' +
         '<div><label>Zeměpisná délka</label><input data-k="lon" value="'+(config.lon!=null?config.lon:13.3776)+'"></div>' +
         '<div style="grid-column:1/-1;"><label>Zobrazený název místa</label><input data-k="place" value="'+(config.place||'Plzeň')+'"></div>' +
@@ -371,6 +383,70 @@
     return '<label>Widget</label><select class="dev-widget-type">'+opts+'</select>' +
       '<div class="dev-cfg-holder">' + configFieldsHtml(widget.type||'', widget.config) + '</div>';
   }
+
+  // ---------- city search (weather widget lat/lon lookup) ----------
+  var cityGeocodeTimer = null;
+  document.addEventListener('input', function(e){
+    if(!e.target.classList || !e.target.classList.contains('city-search')) return;
+    var input = e.target;
+    var wrap = input.closest('.city-search-wrap');
+    var resultsEl = wrap ? wrap.querySelector('.city-results') : null;
+    if(!resultsEl) return;
+    var query = input.value.trim();
+    clearTimeout(cityGeocodeTimer);
+    if(query.length < 2){
+      resultsEl.style.display = 'none';
+      resultsEl.innerHTML = '';
+      return;
+    }
+    cityGeocodeTimer = setTimeout(function(){
+      fetch('https://geocoding-api.open-meteo.com/v1/search?count=6&language=cs&name=' + encodeURIComponent(query))
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          var items = data.results || [];
+          if(!items.length){
+            resultsEl.innerHTML = '<div class="city-result-item" style="color:var(--muted);cursor:default;">Nic nenalezeno</div>';
+            resultsEl.style.display = 'block';
+            return;
+          }
+          resultsEl.innerHTML = items.map(function(city){
+            var label = city.name + (city.admin1 ? ', ' + city.admin1 : '') + (city.country ? ' (' + city.country + ')' : '');
+            return '<div class="city-result-item" data-lat="'+city.latitude+'" data-lon="'+city.longitude+'" data-name="'+String(city.name).replace(/"/g,'&quot;')+'">'+label+'</div>';
+          }).join('');
+          resultsEl.style.display = 'block';
+        }).catch(function(){
+          resultsEl.style.display = 'none';
+        });
+    }, 400);
+  });
+
+  document.addEventListener('click', function(e){
+    if(e.target.classList && e.target.classList.contains('city-result-item') && e.target.hasAttribute('data-lat')){
+      var item = e.target;
+      var holder = item.closest('.dev-cfg-holder, .grp-cfg-holder');
+      if(holder){
+        var latInput = holder.querySelector('[data-k="lat"]');
+        var lonInput = holder.querySelector('[data-k="lon"]');
+        var placeInput = holder.querySelector('[data-k="place"]');
+        if(latInput) latInput.value = item.getAttribute('data-lat');
+        if(lonInput) lonInput.value = item.getAttribute('data-lon');
+        if(placeInput) placeInput.value = item.getAttribute('data-name');
+        var searchInput = holder.querySelector('.city-search');
+        if(searchInput) searchInput.value = '';
+      }
+      var resultsEl = item.parentElement;
+      resultsEl.style.display = 'none';
+      resultsEl.innerHTML = '';
+      return;
+    }
+    // click outside any open results dropdown closes it
+    document.querySelectorAll('.city-search-wrap').forEach(function(wrap){
+      if(!wrap.contains(e.target)){
+        var r = wrap.querySelector('.city-results');
+        if(r){ r.style.display = 'none'; }
+      }
+    });
+  });
 
   function deviceCardHtml(id, d){
     var online = (Date.now() - (d.lastSeen||0)) < 15000;

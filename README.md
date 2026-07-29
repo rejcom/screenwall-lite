@@ -86,7 +86,7 @@ vlastní widget ručně.
 | Widget | Co potřebuje | Poznámka |
 |---|---|---|
 | Hodiny | nic (volitelně světová města) | 12/24hodinový formát; nepovinný řádek s malými hodinami dalších měst (`Název\|Časové pásmo`, např. `Tokio\|Asia/Tokyo`) |
-| Počasí | zeměpisné souřadnice | aktuální stav + výhled na 4 dny, zdarma přes Open-Meteo, bez API klíče |
+| Počasí | zeměpisné souřadnice (nebo napiš název města a vyber ze seznamu) | aktuální stav + výhled na 4 dny, zdarma přes Open-Meteo, bez API klíče |
 | Fotorámeček | seznam URL adres obrázků | interval střídání v sekundách |
 | Textová deska | volný text | velikost písma |
 | Sdílení obrazovky (živě) | nic v kartě displeje | obraz se pouští z panelu „Sdílení obrazovky" v administraci — libovolná karta/obrazovka z počítače, jako snímky po ~1 vteřině, se třemi presety kvality; hodí se na přednášky. Vyžaduje prohlížeč s podporou `getDisplayMedia` (běžné desktopové Chrome/Edge/Firefox). |
