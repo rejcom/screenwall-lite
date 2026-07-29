@@ -13,10 +13,10 @@ Ve druhé verzi přibylo:
 ## Soubory
 
 - **`index.html`** — hlavní stránka s odkazy na obě části.
-- **`admin.html`** — přihlášení/registrace + správa displejů. Otevíráš na počítači.
+- **`admin.html`** — přihlášení/registrace + správa displejů + panel pro sdílení obrazovky. Otevíráš na počítači.
 - **`display.html`** — pasivní displej. Otevíráš na starém telefonu/tabletu.
 - **`api/`** — serverless funkce (Node.js, žádné závislosti navíc), které mluví s Firebase a řeší účty,
-  párování a přístupová práva. Nasazují se samy, jakmile je repo na Vercelu.
+  párování, přístupová práva a přenos snímků při sdílení obrazovky. Nasazují se samy, jakmile je repo na Vercelu.
 
 ## 1. Firebase — jen jako úložiště, servisní účet místo test mode
 
@@ -52,10 +52,20 @@ Po uložení proměnných je potřeba projekt znovu nasadit (redeploy), aby se p
 1. Otevři `admin.html` → **Vytvořit účet** (jméno + heslo, jen pro tebe).
 2. V administraci se vygeneruje párovací QR kód pro aktuální Wall ID (výchozí `domov`).
 3. Naskenuj ho na starém telefonu → telefon se sám zaregistruje a objeví se v seznamu.
-4. Přiřaď mu widget (hodiny, počasí, fotorámeček, textová deska).
+4. Přiřaď mu widget — viz přehled níže.
 
 Jeden účet může mít víc "zdí" — stačí v administraci změnit Wall ID a znovu načíst; pro každou zeď se
 generuje samostatný párovací odkaz.
+
+## Widgety
+
+| Widget | Co potřebuje | Poznámka |
+|---|---|---|
+| Hodiny | nic (volitelně světová města) | 12/24hodinový formát; nepovinný řádek s malými hodinami dalších měst (`Název\|Časové pásmo`, např. `Tokio\|Asia/Tokyo`) |
+| Počasí | zeměpisné souřadnice | aktuální stav + výhled na 4 dny, zdarma přes Open-Meteo, bez API klíče |
+| Fotorámeček | seznam URL adres obrázků | interval střídání v sekundách |
+| Textová deska | volný text | velikost písma |
+| Sdílení obrazovky (živě) | nic v kartě displeje | obraz se pouští z panelu „Sdílení obrazovky" v administraci — libovolná karta/obrazovka z počítače, jako snímky po ~3 vteřinách; hodí se na přednášky. Vyžaduje prohlížeč s podporou `getDisplayMedia` (běžné desktopové Chrome/Edge/Firefox). |
 
 ## Jak to funguje pod kapotou
 
@@ -70,6 +80,9 @@ generuje samostatný párovací odkaz.
   akorát k datům toho jednoho displeje, ne k celému účtu.
 - Různí uživatelé mají data oddělená pod `/users/{uid}/...` — jeden účet nemůže vidět ani smazat
   displeje jiného účtu (ověřeno testy při vývoji).
+- Sdílení obrazovky posílá zmenšené a komprimované JPEG snímky (ne video) přes stejnou Firebase
+  databázi — je to jednoduché a spolehlivé, ale není určené na celodenní nepřetržitý provoz;
+  pro krátké přednáškové session je to v pohodě.
 
 ## Nápady na rozšíření
 

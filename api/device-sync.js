@@ -31,7 +31,20 @@ module.exports = async (req, res) => {
       return;
     }
     await rtdb("PATCH", path, { lastSeen: Date.now() }).catch(function () {});
-    res.status(200).json({ name: dev.name, widget: dev.widget || null });
+
+    var widget = dev.widget || null;
+    if (widget && widget.type === "screenshare") {
+      const broadcastPath = "/users/" + idx.uid + "/walls/" + encodeURIComponent(idx.wall) + "/broadcast";
+      const broadcast = await rtdb("GET", broadcastPath).catch(function () { return null; });
+      widget = {
+        type: "screenshare",
+        config: {
+          frame: broadcast ? broadcast.frame : null,
+          updatedAt: broadcast ? broadcast.updatedAt : null
+        }
+      };
+    }
+    res.status(200).json({ name: dev.name, widget: widget });
   } catch (e) {
     res.status(500).json({ error: "Chyba serveru: " + e.message });
   }

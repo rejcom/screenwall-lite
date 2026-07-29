@@ -49,18 +49,27 @@
   .w-clock{text-align:center;}
   .w-clock .time{font-family:var(--mono);font-size:min(22vw,180px);font-weight:600;letter-spacing:.02em;line-height:1;}
   .w-clock .date{margin-top:10px;font-size:min(4.5vw,28px);color:var(--muted);text-transform:capitalize;}
+  .w-clock .cities{margin-top:18px;font-size:min(2.4vw,16px);color:#5c6b76;font-family:var(--mono);letter-spacing:.03em;}
 
   .w-weather{text-align:center;padding:20px;}
   .w-weather .icon{font-size:min(28vw,220px);line-height:1;}
   .w-weather .temp{font-family:var(--mono);font-size:min(14vw,110px);font-weight:600;margin-top:4px;}
   .w-weather .desc{font-size:min(5vw,30px);color:var(--muted);margin-top:6px;}
-  .w-weather .place{font-size:min(3.4vw,18px);color:#4a5560;margin-top:14px;font-family:var(--mono);}
+  .w-weather .outlook{display:flex;gap:min(4vw,26px);margin-top:26px;justify-content:center;}
+  .w-weather .outlook-day{text-align:center;}
+  .w-weather .outlook-day .wd{font-size:min(2.6vw,15px);color:var(--muted);text-transform:capitalize;}
+  .w-weather .outlook-day .ic{font-size:min(7vw,42px);line-height:1.3;}
+  .w-weather .outlook-day .mm{font-size:min(2.6vw,15px);font-family:var(--mono);color:#9aa7b1;}
+  .w-weather .place{font-size:min(3.4vw,18px);color:#4a5560;margin-top:16px;font-family:var(--mono);}
 
   .w-text{max-width:90vw;text-align:center;white-space:pre-wrap;line-height:1.4;}
 
   .w-photo{position:fixed;inset:0;background:#000;}
   .w-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity 1.2s ease;}
   .w-photo img.show{opacity:1;}
+
+  .w-screenshare{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;}
+  .w-screenshare img{width:100%;height:100%;object-fit:contain;}
 
   .w-empty{text-align:center;color:var(--muted);}
   .w-empty .dot{width:10px;height:10px;border-radius:50%;background:var(--amber);display:inline-block;margin-bottom:14px;animation:pulse 1.6s infinite;}
@@ -182,6 +191,7 @@
     if(widget.type === 'weather') return renderWeather(widget.config||{});
     if(widget.type === 'photo') return renderPhoto(widget.config||{});
     if(widget.type === 'text') return renderText(widget.config||{});
+    if(widget.type === 'screenshare') return renderScreenshare(widget.config||{});
     return renderEmpty();
   }
 
@@ -190,13 +200,23 @@
   }
 
   function renderClock(cfg){
-    stage.innerHTML = '<div class="w-clock"><div class="time" id="ck-time"></div><div class="date" id="ck-date"></div></div>';
+    var citiesHtml = (cfg.cities && cfg.cities.length) ? '<div class="cities" id="ck-cities"></div>' : '';
+    stage.innerHTML = '<div class="w-clock"><div class="time" id="ck-time"></div><div class="date" id="ck-date"></div>' + citiesHtml + '</div>';
     var t = document.getElementById('ck-time'), d = document.getElementById('ck-date');
+    var citiesEl = document.getElementById('ck-cities');
     var h24 = cfg.format !== '12';
     function tick(){
       var now = new Date();
       t.textContent = now.toLocaleTimeString('cs-CZ', h24 ? {hour:'2-digit',minute:'2-digit'} : {hour:'2-digit',minute:'2-digit',hour12:true});
       d.textContent = now.toLocaleDateString('cs-CZ', {weekday:'long', day:'numeric', month:'long'});
+      if(citiesEl && cfg.cities && cfg.cities.length){
+        citiesEl.textContent = cfg.cities.map(function(c){
+          try{
+            var timeStr = now.toLocaleTimeString('cs-CZ', {hour:'2-digit',minute:'2-digit', timeZone: c.tz});
+            return c.name + ' ' + timeStr;
+          }catch(e){ return c.name + ' –'; }
+        }).join('   ·   ');
+      }
     }
     tick();
     var iv = setInterval(tick, 1000);
@@ -205,7 +225,7 @@
 
   function renderWeather(cfg){
     var lat = cfg.lat || 49.7475, lon = cfg.lon || 13.3776, place = cfg.place || 'Plzeň';
-    stage.innerHTML = '<div class="w-weather"><div class="icon" id="wx-icon">·</div><div class="temp" id="wx-temp">–°</div><div class="desc" id="wx-desc">Načítám počasí…</div><div class="place">' + place + '</div></div>';
+    stage.innerHTML = '<div class="w-weather"><div class="icon" id="wx-icon">·</div><div class="temp" id="wx-temp">–°</div><div class="desc" id="wx-desc">Načítám počasí…</div><div class="outlook" id="wx-outlook"></div><div class="place">' + place + '</div></div>';
     var WMO = {0:['jasno','☀️'],1:['skoro jasno','🌤️'],2:['polojasno','⛅'],3:['zataženo','☁️'],
       45:['mlha','🌫️'],48:['mlha, jinovatka','🌫️'],
       51:['slabé mrholení','🌦️'],53:['mrholení','🌦️'],55:['silné mrholení','🌧️'],
@@ -217,7 +237,7 @@
       85:['sněhové přeháňky','🌨️'],86:['silné sněhové přeháňky','❄️'],
       95:['bouřka','⛈️'],96:['bouřka s kroupami','⛈️'],99:['silná bouřka s kroupami','⛈️']};
     function load(){
-      var url = 'https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code,wind_speed_10m&timezone=Europe%2FPrague';
+      var url = 'https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&timezone=Europe%2FPrague';
       fetch(url).then(function(r){return r.json();}).then(function(data){
         var c = data.current || {};
         var wmo = WMO[c.weather_code] || ['neznámo','🌡️'];
@@ -227,6 +247,19 @@
         if(iconEl) iconEl.textContent = wmo[1];
         if(tempEl) tempEl.textContent = Math.round(c.temperature_2m) + '°C';
         if(descEl) descEl.textContent = wmo[0] + ' · vítr ' + Math.round(c.wind_speed_10m) + ' km/h';
+        var outlookEl = document.getElementById('wx-outlook');
+        if(outlookEl && data.daily && data.daily.time && data.daily.time.length > 1){
+          var days = data.daily.time.slice(1, 5);
+          var codes = data.daily.weather_code.slice(1, 5);
+          var maxs = data.daily.temperature_2m_max.slice(1, 5);
+          var mins = data.daily.temperature_2m_min.slice(1, 5);
+          outlookEl.innerHTML = days.map(function(dateStr, i){
+            var dd = new Date(dateStr + 'T12:00:00');
+            var wd = dd.toLocaleDateString('cs-CZ', {weekday:'short'});
+            var w = WMO[codes[i]] || ['', '🌡️'];
+            return '<div class="outlook-day"><div class="wd">'+wd+'</div><div class="ic">'+w[1]+'</div><div class="mm">'+Math.round(maxs[i])+'°/'+Math.round(mins[i])+'°</div></div>';
+          }).join('');
+        }
       }).catch(function(){
         var descEl = document.getElementById('wx-desc');
         if(descEl) descEl.textContent = 'Počasí se nepodařilo načíst';
@@ -267,6 +300,14 @@
     var size = cfg.fontSize || 42;
     stage.innerHTML = '<div class="w-text" style="font-size:'+size+'px;">' +
       (cfg.text || 'Textová deska je prázdná.').replace(/</g,'&lt;') + '</div>';
+  }
+
+  function renderScreenshare(cfg){
+    if(!cfg.frame){
+      stage.innerHTML = '<div class="w-empty"><span class="dot"></span><div>Čeká se, až prezentující spustí sdílení obrazovky.</div></div>';
+      return;
+    }
+    stage.innerHTML = '<div class="w-screenshare"><img src="'+cfg.frame+'" alt="Sdílená obrazovka"></div>';
   }
 
   // ---------- Connection / polling loop ----------

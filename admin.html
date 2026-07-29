@@ -147,6 +147,20 @@
         </div>
         <div class="empty" id="bezel-empty">Načítám párovací odkaz…</div>
       </div>
+
+      <div class="card">
+        <h2>Sdílení obrazovky (živě)</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">
+          Sdílí tvou obrazovku/kartu z tohoto počítače na všechny displeje s widgetem „Sdílení obrazovky" —
+          jako snímky každé ~3 vteřiny, ideální na přednášky.
+        </p>
+        <video id="share-video" muted playsinline style="width:100%;border-radius:8px;background:#000;display:none;"></video>
+        <canvas id="share-canvas" style="display:none;"></canvas>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn-primary" id="btn-share">Spustit sdílení</button>
+        </div>
+        <div class="err" id="share-status" style="color:var(--muted);">Sdílení vypnuto</div>
+      </div>
     </div>
 
     <div>
@@ -256,7 +270,8 @@
     {type:'clock', label:'Hodiny'},
     {type:'weather', label:'Počasí'},
     {type:'photo', label:'Fotorámeček'},
-    {type:'text', label:'Textová deska'}
+    {type:'text', label:'Textová deska'},
+    {type:'screenshare', label:'Sdílení obrazovky (živě)'}
   ];
 
   function configFieldsHtml(type, config){
@@ -281,10 +296,17 @@
         '</div>';
     }
     if(type === 'clock'){
+      var citiesLines = (config.cities||[]).map(function(c){ return c.name + '|' + c.tz; }).join('\n');
       return '<div class="widget-cfg"><div><label>Formát</label><select data-k="format">' +
         '<option value="24"'+(config.format!=='12'?' selected':'')+'>24 hodin</option>' +
         '<option value="12"'+(config.format==='12'?' selected':'')+'>12 hodin</option>' +
-        '</select></div></div>';
+        '</select></div></div>' +
+        '<div class="widget-cfg full"><div><label>Světová města (nepovinné — řádek: Název|Časové pásmo)</label>' +
+        '<textarea data-k="cities" rows="3" placeholder="New York|America/New_York&#10;Londýn|Europe/London&#10;Tokio|Asia/Tokyo">'+citiesLines+'</textarea></div></div>';
+    }
+    if(type === 'screenshare'){
+      return '<div class="widget-cfg full"><div style="font-size:12px;color:var(--muted);">' +
+        'Obraz se posílá z panelu „Sdílení obrazovky" vlevo — tady není potřeba nic nastavovat.</div></div>';
     }
     return '';
   }
@@ -318,6 +340,12 @@
       var k = el.getAttribute('data-k');
       var v = el.value;
       if(k === 'images'){ out[k] = v.split('\n').map(function(s){return s.trim();}).filter(Boolean); }
+      else if(k === 'cities'){
+        out[k] = v.split('\n').map(function(s){return s.trim();}).filter(Boolean).map(function(line){
+          var parts = line.split('|');
+          return {name: (parts[0]||'').trim(), tz: (parts[1]||'').trim()};
+        }).filter(function(c){ return c.name && c.tz; });
+      }
       else if(k === 'lat' || k === 'lon' || k === 'interval' || k === 'fontSize'){ out[k] = parseFloat(v) || 0; }
       else { out[k] = v; }
     });
@@ -371,6 +399,59 @@
     });
   }
 
+  // ---------- screen sharing (periodic frames) ----------
+  var shareStream = null, shareInterval = null;
+
+  function pushFrame(){
+    var video = document.getElementById('share-video');
+    if(!video.videoWidth) return;
+    var canvas = document.getElementById('share-canvas');
+    var scale = Math.min(1, 960 / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    var dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+    api('PATCH', '/api/broadcast?wall=' + encodeURIComponent(currentWall), {frame: dataUrl}).catch(function(){});
+  }
+
+  function startShare(){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
+      toast('Tento prohlížeč neumí sdílet obrazovku.');
+      return;
+    }
+    navigator.mediaDevices.getDisplayMedia({video:{frameRate:5}}).then(function(stream){
+      shareStream = stream;
+      var video = document.getElementById('share-video');
+      video.style.display = 'block';
+      video.srcObject = stream;
+      video.play();
+      document.getElementById('share-status').textContent = 'Sdílení aktivní · odesíláno každé ~3 s';
+      document.getElementById('btn-share').textContent = 'Zastavit sdílení';
+      stream.getVideoTracks()[0].addEventListener('ended', stopShare);
+      if(shareInterval) clearInterval(shareInterval);
+      shareInterval = setInterval(pushFrame, 3000);
+      setTimeout(pushFrame, 400);
+    }).catch(function(e){
+      toast('Sdílení se nepodařilo spustit: ' + e.message);
+    });
+  }
+
+  function stopShare(){
+    if(shareInterval){ clearInterval(shareInterval); shareInterval = null; }
+    if(shareStream){ shareStream.getTracks().forEach(function(t){ t.stop(); }); shareStream = null; }
+    var video = document.getElementById('share-video');
+    video.style.display = 'none';
+    video.srcObject = null;
+    document.getElementById('share-status').textContent = 'Sdílení vypnuto';
+    document.getElementById('btn-share').textContent = 'Spustit sdílení';
+    api('DELETE', '/api/broadcast?wall=' + encodeURIComponent(currentWall)).catch(function(){});
+  }
+
+  document.getElementById('btn-share').addEventListener('click', function(){
+    if(shareStream) stopShare(); else startShare();
+  });
+
   function wireFocusTracking(){
     if(focusTrackingWired) return;
     focusTrackingWired = true;
@@ -387,6 +468,7 @@
   }
 
   function startWall(){
+    stopShare();
     wireFocusTracking();
     refreshBezel();
     loadDevices();
