@@ -135,6 +135,22 @@
         <div class="row" style="margin-top:14px;">
           <button class="btn-primary" id="btn-load-wall">Přepnout / obnovit</button>
         </div>
+        <label>Výchozí skupina pro nově spárované displeje</label>
+        <select id="cfg-default-group"><option value="">— žádná (ruční nastavení) —</option></select>
+      </div>
+
+      <div class="card">
+        <h2>Skupiny displejů</h2>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">
+          Displej zařazený do skupiny automaticky zobrazuje widget skupiny — stačí nastavit jednou
+          a mění se to všem najednou. Nový displej se rovnou zařadí do výchozí skupiny výše, žádné
+          ruční nastavování.
+        </p>
+        <div id="groups-list" class="devices"></div>
+        <div class="row" style="margin-top:12px;">
+          <input id="new-group-name" placeholder="Název nové skupiny, např. Stream">
+          <button class="btn-primary" id="btn-add-group">Přidat</button>
+        </div>
       </div>
 
       <div class="card">
@@ -152,7 +168,7 @@
         <h2>Sdílení obrazovky (živě)</h2>
         <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">
           Sdílí tvou obrazovku/kartu z tohoto počítače na všechny displeje s widgetem „Sdílení obrazovky" —
-          jako snímky každé ~3 vteřiny, ideální na přednášky.
+          jako snímky každou ~1 vteřinu, ideální na přednášky.
         </p>
         <video id="share-video" muted playsinline style="width:100%;border-radius:8px;background:#000;display:none;"></video>
         <canvas id="share-canvas" style="display:none;"></canvas>
@@ -184,6 +200,9 @@
   var editingActive = false;
   var focusTrackingWired = false;
   var currentWall = "domov";
+  var groupsCache = {};
+  var devicesCache = {};
+  var wallSettingsCache = {};
 
   var toastEl = document.getElementById('toast');
   function toast(msg){
@@ -311,12 +330,30 @@
     return '';
   }
 
-  function deviceCardHtml(id, d){
-    var online = (Date.now() - (d.lastSeen||0)) < 15000;
+  function groupOptionsHtml(selectedId){
+    var opts = '<option value="">— žádná (vlastní nastavení) —</option>';
+    Object.keys(groupsCache).forEach(function(gid){
+      opts += '<option value="'+gid+'"'+(gid===selectedId?' selected':'')+'>'+(groupsCache[gid].name||gid)+'</option>';
+    });
+    return opts;
+  }
+
+  function deviceWidgetSectionHtml(d){
+    if(d.groupId && groupsCache[d.groupId]){
+      return '<div class="widget-cfg full"><div style="font-size:12px;color:var(--muted);">' +
+        'Zobrazuje obsah skupiny „'+groupsCache[d.groupId].name+'". Widget uprav ve skupině vlevo, ' +
+        'nebo displej ze skupiny odeber výběrem „— žádná —" výše.</div></div>';
+    }
     var widget = d.widget || {};
     var opts = WIDGETS.map(function(w){
       return '<option value="'+w.type+'"'+(w.type===(widget.type||'')?' selected':'')+'>'+w.label+'</option>';
     }).join('');
+    return '<label>Widget</label><select class="dev-widget-type">'+opts+'</select>' +
+      '<div class="dev-cfg-holder">' + configFieldsHtml(widget.type||'', widget.config) + '</div>';
+  }
+
+  function deviceCardHtml(id, d){
+    var online = (Date.now() - (d.lastSeen||0)) < 15000;
     return '' +
       '<div class="device'+(online?'':' offline')+'" data-id="'+id+'">' +
         '<div class="device-head">' +
@@ -324,9 +361,9 @@
           '<input class="dev-name" value="'+(d.name||id)+'">' +
           '<span class="meta">ID '+id.slice(-4).toUpperCase()+' · '+(d.resolution||'')+' · '+(online?'online':'offline')+'</span>' +
         '</div>' +
-        '<label>Widget</label>' +
-        '<select class="dev-widget-type">'+opts+'</select>' +
-        '<div class="dev-cfg-holder">' + configFieldsHtml(widget.type||'', widget.config) + '</div>' +
+        '<label>Skupina</label>' +
+        '<select class="dev-group">'+groupOptionsHtml(d.groupId||'')+'</select>' +
+        '<div class="dev-widget-section">' + deviceWidgetSectionHtml(d) + '</div>' +
         '<div class="actions">' +
           '<button class="btn-danger dev-remove">Odebrat</button>' +
           '<button class="btn-primary dev-save">Uložit</button>' +
@@ -334,9 +371,10 @@
       '</div>';
   }
 
-  function readConfigFromCard(card){
+  function readConfigFromHolder(holder){
     var out = {};
-    card.querySelectorAll('.dev-cfg-holder [data-k]').forEach(function(el){
+    if(!holder) return out;
+    holder.querySelectorAll('[data-k]').forEach(function(el){
       var k = el.getAttribute('data-k');
       var v = el.value;
       if(k === 'images'){ out[k] = v.split('\n').map(function(s){return s.trim();}).filter(Boolean); }
@@ -352,16 +390,34 @@
     return out;
   }
 
-  function wireDeviceCard(card, id){
-    card.querySelector('.dev-widget-type').addEventListener('change', function(){
+  function wireWidgetTypeSelect(card){
+    var sel = card.querySelector('.dev-widget-type');
+    if(!sel) return;
+    sel.addEventListener('change', function(){
       card.querySelector('.dev-cfg-holder').innerHTML = configFieldsHtml(this.value, {});
     });
+  }
+
+  function wireDeviceCard(card, id, d){
+    var groupSelect = card.querySelector('.dev-group');
+    groupSelect.addEventListener('change', function(){
+      var preview = Object.assign({}, d, {groupId: this.value || null});
+      card.querySelector('.dev-widget-section').innerHTML = deviceWidgetSectionHtml(preview);
+      wireWidgetTypeSelect(card);
+    });
+    wireWidgetTypeSelect(card);
+
     card.querySelector('.dev-save').addEventListener('click', function(){
       var name = card.querySelector('.dev-name').value;
-      var type = card.querySelector('.dev-widget-type').value;
-      var widget = type ? {type: type, config: readConfigFromCard(card)} : null;
+      var groupId = card.querySelector('.dev-group').value || null;
+      var body = {name: name, groupId: groupId};
+      if(!groupId){
+        var typeSel = card.querySelector('.dev-widget-type');
+        var type = typeSel ? typeSel.value : '';
+        body.widget = type ? {type: type, config: readConfigFromHolder(card.querySelector('.dev-cfg-holder'))} : null;
+      }
       var qs = '?wall=' + encodeURIComponent(currentWall);
-      api('PATCH', '/api/devices/' + id + qs, {name: name, widget: widget})
+      api('PATCH', '/api/devices/' + id + qs, body)
         .then(function(){ toast('Uloženo — displej se aktualizuje během pár vteřin.'); })
         .catch(function(e){ toast('Chyba: ' + e.message); });
     });
@@ -372,28 +428,133 @@
     });
   }
 
+  // ---------- groups ----------
+  function groupCardHtml(gid, g, memberCount){
+    var widget = g.widget || {};
+    var opts = WIDGETS.map(function(w){
+      return '<option value="'+w.type+'"'+(w.type===(widget.type||'')?' selected':'')+'>'+w.label+'</option>';
+    }).join('');
+    return '' +
+      '<div class="device" data-gid="'+gid+'">' +
+        '<div class="device-head">' +
+          '<input class="grp-name" value="'+(g.name||gid)+'">' +
+          '<span class="meta">'+memberCount+'&times; displej</span>' +
+        '</div>' +
+        '<label>Widget skupiny</label>' +
+        '<select class="grp-widget-type">'+opts+'</select>' +
+        '<div class="grp-cfg-holder">' + configFieldsHtml(widget.type||'', widget.config) + '</div>' +
+        '<div class="actions">' +
+          '<button class="btn-danger grp-remove">Smazat skupinu</button>' +
+          '<button class="btn-primary grp-save">Uložit</button>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function wireGroupCard(card, gid){
+    card.querySelector('.grp-widget-type').addEventListener('change', function(){
+      card.querySelector('.grp-cfg-holder').innerHTML = configFieldsHtml(this.value, {});
+    });
+    card.querySelector('.grp-save').addEventListener('click', function(){
+      var name = card.querySelector('.grp-name').value.trim();
+      var type = card.querySelector('.grp-widget-type').value;
+      var widget = type ? {type: type, config: readConfigFromHolder(card.querySelector('.grp-cfg-holder'))} : null;
+      var qs = '?wall=' + encodeURIComponent(currentWall);
+      api('PATCH', '/api/groups/' + gid + qs, {name: name, widget: widget})
+        .then(function(){ toast('Skupina uložena.'); loadGroups(); })
+        .catch(function(e){ toast('Chyba: ' + e.message); });
+    });
+    card.querySelector('.grp-remove').addEventListener('click', function(){
+      if(!confirm('Smazat skupinu? Displeje v ní se přepnou na ruční nastavení.')) return;
+      var qs = '?wall=' + encodeURIComponent(currentWall);
+      api('DELETE', '/api/groups/' + gid + qs).then(function(){ loadGroups(); loadDevices(); toast('Skupina smazána.'); });
+    });
+  }
+
+  function renderGroupsList(){
+    var list = document.getElementById('groups-list');
+    var ids = Object.keys(groupsCache);
+    if(!ids.length){
+      list.innerHTML = '<div class="empty">Zatím žádné skupiny.</div>';
+      return;
+    }
+    list.innerHTML = ids.map(function(gid){
+      var count = Object.keys(devicesCache).filter(function(did){ return devicesCache[did].groupId === gid; }).length;
+      return groupCardHtml(gid, groupsCache[gid], count);
+    }).join('');
+    ids.forEach(function(gid){
+      wireGroupCard(list.querySelector('.device[data-gid="'+gid+'"]'), gid);
+    });
+  }
+
+  function renderDefaultGroupOptions(){
+    var sel = document.getElementById('cfg-default-group');
+    var html = '<option value="">— žádná (ruční nastavení) —</option>';
+    Object.keys(groupsCache).forEach(function(gid){
+      html += '<option value="'+gid+'">'+(groupsCache[gid].name||gid)+'</option>';
+    });
+    sel.innerHTML = html;
+    sel.value = wallSettingsCache.defaultGroupId || '';
+  }
+
+  function loadGroups(){
+    return api('GET', '/api/groups?wall=' + encodeURIComponent(currentWall)).then(function(data){
+      groupsCache = data || {};
+      renderGroupsList();
+      renderDefaultGroupOptions();
+    }).catch(function(e){
+      document.getElementById('groups-list').innerHTML = '<div class="empty">Nepodařilo se načíst skupiny: '+e.message+'</div>';
+    });
+  }
+
+  function loadWallSettings(){
+    return api('GET', '/api/wall-settings?wall=' + encodeURIComponent(currentWall)).then(function(data){
+      wallSettingsCache = data || {};
+      document.getElementById('cfg-default-group').value = wallSettingsCache.defaultGroupId || '';
+    }).catch(function(){});
+  }
+
+  document.getElementById('cfg-default-group').addEventListener('change', function(){
+    var groupId = this.value || null;
+    wallSettingsCache.defaultGroupId = groupId;
+    api('PATCH', '/api/wall-settings?wall=' + encodeURIComponent(currentWall), {defaultGroupId: groupId})
+      .then(function(){ toast('Výchozí skupina uložena.'); })
+      .catch(function(e){ toast('Chyba: ' + e.message); });
+  });
+
+  document.getElementById('btn-add-group').addEventListener('click', function(){
+    var nameInput = document.getElementById('new-group-name');
+    var name = nameInput.value.trim();
+    if(!name){ toast('Zadej název skupiny.'); return; }
+    api('POST', '/api/groups?wall=' + encodeURIComponent(currentWall), {name: name})
+      .then(function(){ nameInput.value = ''; loadGroups(); toast('Skupina vytvořena.'); })
+      .catch(function(e){ toast('Chyba: ' + e.message); });
+  });
+
   function loadDevices(){
     if(editingActive) return;
     api('GET', '/api/devices?wall=' + encodeURIComponent(currentWall)).then(function(data){
+      devicesCache = data || {};
       var list = document.getElementById('devices');
       var countEl = document.getElementById('dev-count');
-      var ids = Object.keys(data || {});
+      var ids = Object.keys(devicesCache);
       if(!ids.length){
         list.innerHTML = '<div class="empty">Zatím žádné obrazovky. Naspárujte první vlevo.</div>';
         countEl.textContent = '';
+        renderGroupsList();
         return;
       }
       ids.sort(function(a,b){
-        var oa = (Date.now()-(data[a].lastSeen||0))<15000;
-        var ob = (Date.now()-(data[b].lastSeen||0))<15000;
+        var oa = (Date.now()-(devicesCache[a].lastSeen||0))<15000;
+        var ob = (Date.now()-(devicesCache[b].lastSeen||0))<15000;
         if(oa !== ob) return oa ? -1 : 1;
-        return (data[a].name||a).localeCompare(data[b].name||b);
+        return (devicesCache[a].name||a).localeCompare(devicesCache[b].name||b);
       });
       countEl.textContent = '(' + ids.length + ')';
-      list.innerHTML = ids.map(function(id){ return deviceCardHtml(id, data[id]); }).join('');
+      list.innerHTML = ids.map(function(id){ return deviceCardHtml(id, devicesCache[id]); }).join('');
       ids.forEach(function(id){
-        wireDeviceCard(list.querySelector('.device[data-id="'+id+'"]'), id);
+        wireDeviceCard(list.querySelector('.device[data-id="'+id+'"]'), id, devicesCache[id]);
       });
+      renderGroupsList();
     }).catch(function(e){
       document.getElementById('devices').innerHTML = '<div class="empty">Nepodařilo se načíst obrazovky: '+e.message+'</div>';
     });
@@ -426,11 +587,11 @@
       video.style.display = 'block';
       video.srcObject = stream;
       video.play();
-      document.getElementById('share-status').textContent = 'Sdílení aktivní · odesíláno každé ~3 s';
+      document.getElementById('share-status').textContent = 'Sdílení aktivní · odesíláno každou ~1 s';
       document.getElementById('btn-share').textContent = 'Zastavit sdílení';
       stream.getVideoTracks()[0].addEventListener('ended', stopShare);
       if(shareInterval) clearInterval(shareInterval);
-      shareInterval = setInterval(pushFrame, 3000);
+      shareInterval = setInterval(pushFrame, 1000);
       setTimeout(pushFrame, 400);
     }).catch(function(e){
       toast('Sdílení se nepodařilo spustit: ' + e.message);
@@ -455,15 +616,18 @@
   function wireFocusTracking(){
     if(focusTrackingWired) return;
     focusTrackingWired = true;
-    var devicesEl = document.getElementById('devices');
-    devicesEl.addEventListener('focusin', function(){ editingActive = true; });
-    devicesEl.addEventListener('focusout', function(){
-      setTimeout(function(){
-        if(!devicesEl.contains(document.activeElement)){
-          editingActive = false;
-          loadDevices();
-        }
-      }, 120);
+    var containers = [document.getElementById('devices'), document.getElementById('groups-list')];
+    containers.forEach(function(el){
+      el.addEventListener('focusin', function(){ editingActive = true; });
+      el.addEventListener('focusout', function(){
+        setTimeout(function(){
+          var stillInside = containers.some(function(c){ return c.contains(document.activeElement); });
+          if(!stillInside){
+            editingActive = false;
+            loadDevices();
+          }
+        }, 120);
+      });
     });
   }
 
@@ -471,7 +635,8 @@
     stopShare();
     wireFocusTracking();
     refreshBezel();
-    loadDevices();
+    loadWallSettings();
+    loadGroups().then(loadDevices);
     if(poller) clearInterval(poller);
     poller = setInterval(loadDevices, 4000);
   }

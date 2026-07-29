@@ -191,7 +191,7 @@
     if(widget.type === 'weather') return renderWeather(widget.config||{});
     if(widget.type === 'photo') return renderPhoto(widget.config||{});
     if(widget.type === 'text') return renderText(widget.config||{});
-    if(widget.type === 'screenshare') return renderScreenshare(widget.config||{});
+    if(widget.type === 'screenshare') return renderScreenshare();
     return renderEmpty();
   }
 
@@ -302,16 +302,48 @@
       (cfg.text || 'Textová deska je prázdná.').replace(/</g,'&lt;') + '</div>';
   }
 
-  function renderScreenshare(cfg){
-    if(!cfg.frame){
-      stage.innerHTML = '<div class="w-empty"><span class="dot"></span><div>Čeká se, až prezentující spustí sdílení obrazovky.</div></div>';
+  function renderScreenshare(){
+    stage.innerHTML = '<div class="w-screenshare" id="ss-wrap"><div class="w-empty" id="ss-empty"><span class="dot"></span><div>Čeká se, až prezentující spustí sdílení obrazovky.</div></div></div>';
+  }
+
+  function updateScreenshareFrame(frame){
+    var wrap = document.getElementById('ss-wrap');
+    if(!wrap) return;
+    if(!frame){
+      if(!document.getElementById('ss-empty')){
+        wrap.innerHTML = '<div class="w-empty" id="ss-empty"><span class="dot"></span><div>Čeká se, až prezentující spustí sdílení obrazovky.</div></div>';
+      }
       return;
     }
-    stage.innerHTML = '<div class="w-screenshare"><img src="'+cfg.frame+'" alt="Sdílená obrazovka"></div>';
+    var img = wrap.querySelector('img');
+    if(!img){
+      wrap.innerHTML = '<img alt="Sdílená obrazovka">';
+      img = wrap.querySelector('img');
+    }
+    img.src = frame;
   }
 
   // ---------- Connection / polling loop ----------
   var lastWidgetJSON = null;
+  var currentWidgetType = null;
+  var framePollTimer = null;
+
+  function stopFramePoll(){
+    if(framePollTimer){ clearInterval(framePollTimer); framePollTimer = null; }
+  }
+
+  function startFramePoll(uid, wall){
+    stopFramePoll();
+    function pull(){
+      fetch('/api/broadcast-frame?uid=' + encodeURIComponent(uid) + '&wall=' + encodeURIComponent(wall))
+        .then(function(r){ return r.json(); })
+        .then(function(data){ updateScreenshareFrame(data && data.frame); })
+        .catch(function(){});
+    }
+    pull();
+    framePollTimer = setInterval(pull, 1000);
+  }
+
   function startLoop(cfg){
     setupEl.style.display = 'none';
     var badge = document.getElementById('id-badge');
@@ -328,11 +360,21 @@
           return;
         }
         if(!res.ok){ return; /* offline blip or server hiccup, retry next tick */ }
-        var wJSON = JSON.stringify(res.data.widget || null);
+        var widget = res.data.widget;
+        var wJSON = JSON.stringify(widget || null);
         if(wJSON !== lastWidgetJSON){
           lastWidgetJSON = wJSON;
-          renderWidget(res.data.widget);
+          renderWidget(widget);
         }
+        var newType = widget && widget.type;
+        if(newType === 'screenshare'){
+          if(currentWidgetType !== 'screenshare'){
+            startFramePoll(widget.config.uid, widget.config.wall);
+          }
+        } else if(currentWidgetType === 'screenshare'){
+          stopFramePoll();
+        }
+        currentWidgetType = newType;
       }).catch(function(){ /* network blip, retry next tick */ });
     }
     tick();

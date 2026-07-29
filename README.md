@@ -57,6 +57,20 @@ Po uložení proměnných je potřeba projekt znovu nasadit (redeploy), aby se p
 Jeden účet může mít víc "zdí" — stačí v administraci změnit Wall ID a znovu načíst; pro každou zeď se
 generuje samostatný párovací odkaz.
 
+## Skupiny displejů a automatické zařazení
+
+Pro akce/konference nebo třeba hotelové televize je nepohodlné nastavovat každý displej ručně. Řeší to
+**skupiny**:
+
+1. V kartě „Skupiny displejů" vytvoř skupinu (např. „Stream" nebo „Lobby TV") a nastav jí widget.
+2. V kartě „Zeď" zvol tuhle skupinu jako **výchozí skupinu pro nově spárované displeje**.
+3. Od teď se každý nově naskenovaný displej rovnou zařadí do skupiny a zobrazuje její widget —
+   žádné ruční nastavování po jednom.
+4. Změna widgetu skupiny se promítne okamžitě všem displejům v ní najednou.
+
+Displej lze kdykoliv ze skupiny vyjmout (výběrem „— žádná —" v jeho vlastní kartě) a nastavit mu
+vlastní widget ručně.
+
 ## Widgety
 
 | Widget | Co potřebuje | Poznámka |
@@ -83,6 +97,12 @@ generuje samostatný párovací odkaz.
 - Sdílení obrazovky posílá zmenšené a komprimované JPEG snímky (ne video) přes stejnou Firebase
   databázi — je to jednoduché a spolehlivé, ale není určené na celodenní nepřetržitý provoz;
   pro krátké přednáškové session je to v pohodě.
+- Snímek pro sdílení obrazovky se stahuje přes samostatný veřejný endpoint (`/api/broadcast-frame`)
+  s krátkým cachováním na hraně Vercelu (`s-maxage=1`). Díky tomu nezáleží, jestli se dívá 5, nebo
+  100 displejů najednou — na Firebase a na serverless funkce jde pořád jen jeden dotaz za vteřinu,
+  ne jeden za displej. Přenosová šířka pásma k divákům (displejům) roste s jejich počtem přirozeně
+  dál — to je fyzikální limit, který cachování neřeší, ale u desítek až stovek displejů je to
+  v rámci běžných limitů zdarma dostupných plánů.
 
 ## Nápady na rozšíření
 

@@ -27,9 +27,13 @@ module.exports = async (req, res) => {
   const deviceId = "d-" + crypto.randomBytes(6).toString("hex");
   const deviceSecret = crypto.randomBytes(20).toString("hex");
   const { salt, hash } = hashPassword(deviceSecret);
-  const path = "/users/" + claim.uid + "/walls/" + encodeURIComponent(claim.wall) + "/devices/" + deviceId;
+  const wallBase = "/users/" + claim.uid + "/walls/" + encodeURIComponent(claim.wall);
+  const path = wallBase + "/devices/" + deviceId;
 
   try {
+    const settings = await rtdb("GET", wallBase + "/settings").catch(function () { return null; });
+    const groupId = settings && settings.defaultGroupId ? settings.defaultGroupId : null;
+
     await rtdb("PUT", path, {
       name: "Displej " + deviceId.slice(-4),
       connectedAt: Date.now(),
@@ -37,6 +41,7 @@ module.exports = async (req, res) => {
       resolution: String(body.resolution || ""),
       ua: String(body.ua || "").slice(0, 140),
       widget: null,
+      groupId: groupId,
       deviceTokenSalt: salt,
       deviceTokenHash: hash
     });

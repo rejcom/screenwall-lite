@@ -33,18 +33,18 @@ module.exports = async (req, res) => {
     await rtdb("PATCH", path, { lastSeen: Date.now() }).catch(function () {});
 
     var widget = dev.widget || null;
-    if (widget && widget.type === "screenshare") {
-      const broadcastPath = "/users/" + idx.uid + "/walls/" + encodeURIComponent(idx.wall) + "/broadcast";
-      const broadcast = await rtdb("GET", broadcastPath).catch(function () { return null; });
-      widget = {
-        type: "screenshare",
-        config: {
-          frame: broadcast ? broadcast.frame : null,
-          updatedAt: broadcast ? broadcast.updatedAt : null
-        }
-      };
+    if (dev.groupId) {
+      const groupPath = "/users/" + idx.uid + "/walls/" + encodeURIComponent(idx.wall) + "/groups/" + dev.groupId;
+      const group = await rtdb("GET", groupPath).catch(function () { return null; });
+      widget = group ? (group.widget || null) : null;
     }
-    res.status(200).json({ name: dev.name, widget: widget });
+    if (widget && widget.type === "screenshare") {
+      // Don't embed the (large) frame in every per-device poll — the display
+      // fetches it itself from the cacheable /api/broadcast-frame endpoint,
+      // which is what lets many displays share one origin fetch.
+      widget = { type: "screenshare", config: { uid: idx.uid, wall: idx.wall } };
+    }
+    res.status(200).json({ name: dev.name, widget: widget, groupId: dev.groupId || null });
   } catch (e) {
     res.status(500).json({ error: "Chyba serveru: " + e.message });
   }
