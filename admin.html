@@ -420,6 +420,16 @@
     }, 400);
   });
 
+  // Prevent the browser's default mousedown-blur on the search input — without
+  // this, clicking a result can momentarily drop focus outside the card,
+  // which would let the anti-interrupt cleanup reload the card from the
+  // server (still holding the old, unsaved values) before the click finishes.
+  document.addEventListener('mousedown', function(e){
+    if(e.target.classList && e.target.classList.contains('city-result-item')){
+      e.preventDefault();
+    }
+  });
+
   document.addEventListener('click', function(e){
     if(e.target.classList && e.target.classList.contains('city-result-item') && e.target.hasAttribute('data-lat')){
       var item = e.target;
