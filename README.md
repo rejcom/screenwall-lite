@@ -1,7 +1,7 @@
-# ScreenWall Lite
+# ScreenLive
 
-Prototyp inspirovaný projektem [ScreenWall](https://screenwall.app) — mění staré telefony a tablety
-v šuplíku na hodiny, meteostanici, fotorámeček nebo textovou nástěnku.
+Mění staré telefony a tablety v šuplíku na hodiny, meteostanici, fotorámeček, textovou nástěnku
+nebo živě sdílenou obrazovku.
 
 Ve druhé verzi přibylo:
 
@@ -20,7 +20,7 @@ Ve druhé verzi přibylo:
 
 ## 1. Firebase — jen jako úložiště, servisní účet místo test mode
 
-1. V [Firebase konzoli](https://console.firebase.google.com) u projektu **ScreenWall Lite**:
+1. V [Firebase konzoli](https://console.firebase.google.com) u projektu **ScreenLive**:
    **Build → Realtime Database → Create Database** (pokud ještě není). Region klidně `europe-west1`.
    Pravidla teď můžou být cokoliv, protože k databázi už napřímo nikdo z prohlížeče nepřistupuje —
    ale pro jistotu je zamkni: v **Rules** nastav
