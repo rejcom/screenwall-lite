@@ -317,8 +317,18 @@
     {type:'weather', label:'Počasí'},
     {type:'photo', label:'Fotorámeček'},
     {type:'text', label:'Textová deska'},
-    {type:'screenshare', label:'Sdílení obrazovky (živě)'}
+    {type:'screenshare', label:'Sdílení obrazovky (živě)'},
+    {type:'qr', label:'QR kód'},
+    {type:'countdown', label:'Odpočítávání'}
   ];
+
+  function isoToLocalInputValue(iso){
+    if(!iso) return '';
+    var d = new Date(iso);
+    if(isNaN(d.getTime())) return '';
+    var pad = function(n){ return (n<10?'0':'')+n; };
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
 
   function configFieldsHtml(type, config){
     config = config || {};
@@ -358,6 +368,19 @@
     if(type === 'screenshare'){
       return '<div class="widget-cfg full"><div style="font-size:12px;color:var(--muted);">' +
         'Obraz se posílá z panelu „Sdílení obrazovky" vlevo — tady není potřeba nic nastavovat.</div></div>';
+    }
+    if(type === 'qr'){
+      return '<div class="widget-cfg full">' +
+        '<div><label>Obsah QR kódu (adresa nebo text)</label><input data-k="url" value="'+(config.url||'').replace(/"/g,'&quot;')+'" placeholder="https://... nebo libovolný text"></div>' +
+        '<div><label>Popisek pod kódem (nepovinné)</label><input data-k="label" value="'+(config.label||'').replace(/"/g,'&quot;')+'" placeholder="např. Naskenuj pro WiFi"></div>' +
+        '</div>';
+    }
+    if(type === 'countdown'){
+      return '<div class="widget-cfg full">' +
+        '<div><label>Titulek (nepovinné)</label><input data-k="title" value="'+(config.title||'').replace(/"/g,'&quot;')+'" placeholder="např. Konference začíná za"></div>' +
+        '<div><label>Cílové datum a čas</label><input type="datetime-local" data-k="target" value="'+isoToLocalInputValue(config.target)+'"></div>' +
+        '<div><label>Text po dosažení nuly (nepovinné)</label><input data-k="doneText" value="'+(config.doneText||'').replace(/"/g,'&quot;')+'" placeholder="např. Začínáme!"></div>' +
+        '</div>';
     }
     return '';
   }
@@ -491,6 +514,7 @@
         }).filter(function(c){ return c.name && c.tz; });
       }
       else if(k === 'lat' || k === 'lon' || k === 'interval' || k === 'fontSize'){ out[k] = parseFloat(v) || 0; }
+      else if(k === 'target'){ out[k] = v ? new Date(v).toISOString() : ''; }
       else { out[k] = v; }
     });
     return out;
