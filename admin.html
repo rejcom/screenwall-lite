@@ -370,8 +370,32 @@
         'Obraz se posílá z panelu „Sdílení obrazovky" vlevo — tady není potřeba nic nastavovat.</div></div>';
     }
     if(type === 'qr'){
+      var qrMode = (config.mode === 'wifi' || config.mode === 'vcard') ? config.mode : 'text';
       return '<div class="widget-cfg full">' +
-        '<div><label>Obsah QR kódu (adresa nebo text)</label><input data-k="url" value="'+(config.url||'').replace(/"/g,'&quot;')+'" placeholder="https://... nebo libovolný text"></div>' +
+        '<div><label>Typ obsahu</label><select class="qr-mode" data-k="mode">' +
+          '<option value="text"'+(qrMode==='text'?' selected':'')+'>Odkaz / text</option>' +
+          '<option value="wifi"'+(qrMode==='wifi'?' selected':'')+'>Wi-Fi přihlášení (naskenuj a připoj se)</option>' +
+          '<option value="vcard"'+(qrMode==='vcard'?' selected':'')+'>Vizitka (naskenuj a ulož kontakt)</option>' +
+        '</select></div>' +
+        '<div class="qr-field-text" style="'+(qrMode==='text'?'':'display:none;')+'">' +
+          '<label>Obsah QR kódu (adresa nebo text)</label><input data-k="url" value="'+(config.url||'').replace(/"/g,'&quot;')+'" placeholder="https://... nebo libovolný text"></div>' +
+        '<div class="qr-field-wifi widget-cfg" style="'+(qrMode==='wifi'?'':'display:none;')+'">' +
+          '<div><label>Název sítě (SSID)</label><input data-k="ssid" value="'+(config.ssid||'').replace(/"/g,'&quot;')+'"></div>' +
+          '<div><label>Heslo</label><input data-k="wifiPassword" value="'+(config.wifiPassword||'').replace(/"/g,'&quot;')+'"></div>' +
+          '<div style="grid-column:1/-1;"><label>Zabezpečení</label><select data-k="security">' +
+            '<option value="WPA"'+(config.security!=='WEP'&&config.security!=='nopass'?' selected':'')+'>WPA/WPA2</option>' +
+            '<option value="WEP"'+(config.security==='WEP'?' selected':'')+'>WEP</option>' +
+            '<option value="nopass"'+(config.security==='nopass'?' selected':'')+'>Bez hesla</option>' +
+          '</select></div>' +
+        '</div>' +
+        '<div class="qr-field-vcard widget-cfg" style="'+(qrMode==='vcard'?'':'display:none;')+'">' +
+          '<div style="grid-column:1/-1;"><label>Jméno a příjmení</label><input data-k="fullName" value="'+(config.fullName||'').replace(/"/g,'&quot;')+'"></div>' +
+          '<div><label>Firma (nepovinné)</label><input data-k="org" value="'+(config.org||'').replace(/"/g,'&quot;')+'"></div>' +
+          '<div><label>Pozice (nepovinné)</label><input data-k="jobTitle" value="'+(config.jobTitle||'').replace(/"/g,'&quot;')+'"></div>' +
+          '<div><label>Telefon (nepovinné)</label><input data-k="phone" value="'+(config.phone||'').replace(/"/g,'&quot;')+'"></div>' +
+          '<div><label>E-mail (nepovinné)</label><input data-k="email" value="'+(config.email||'').replace(/"/g,'&quot;')+'"></div>' +
+          '<div style="grid-column:1/-1;"><label>Web (nepovinné)</label><input data-k="website" value="'+(config.website||'').replace(/"/g,'&quot;')+'"></div>' +
+        '</div>' +
         '<div><label>Popisek pod kódem (nepovinné)</label><input data-k="label" value="'+(config.label||'').replace(/"/g,'&quot;')+'" placeholder="např. Naskenuj pro WiFi"></div>' +
         '</div>';
     }
@@ -451,6 +475,19 @@
     if(e.target.classList && e.target.classList.contains('city-result-item')){
       e.preventDefault();
     }
+  });
+
+  document.addEventListener('change', function(e){
+    if(!e.target.classList || !e.target.classList.contains('qr-mode')) return;
+    var holder = e.target.closest('.dev-cfg-holder, .grp-cfg-holder');
+    if(!holder) return;
+    var mode = e.target.value;
+    var textField = holder.querySelector('.qr-field-text');
+    var wifiField = holder.querySelector('.qr-field-wifi');
+    var vcardField = holder.querySelector('.qr-field-vcard');
+    if(textField) textField.style.display = mode === 'text' ? '' : 'none';
+    if(wifiField) wifiField.style.display = mode === 'wifi' ? '' : 'none';
+    if(vcardField) vcardField.style.display = mode === 'vcard' ? '' : 'none';
   });
 
   document.addEventListener('click', function(e){

@@ -67,6 +67,10 @@
   .w-qr{text-align:center;}
   .w-qr img{width:min(70vw,600px);height:min(70vw,600px);border-radius:16px;background:#fff;padding:24px;display:block;margin:0 auto;}
   .w-qr .label{margin-top:24px;font-size:min(5vw,32px);color:var(--fg);}
+  .w-qr .wifi-fallback{margin-top:22px;font-family:var(--mono);font-size:min(3.4vw,22px);}
+  .w-qr .wifi-fallback .line{margin-top:6px;color:var(--fg);}
+  .w-qr .wifi-fallback .line .k{color:var(--muted);}
+  .w-qr .wifi-fallback .hint{margin-top:12px;font-size:min(2.4vw,15px);color:var(--muted);font-family:var(--sans);}
 
   .w-countdown{text-align:center;}
   .w-countdown .title{font-size:min(5vw,32px);color:var(--muted);margin-bottom:22px;}
@@ -337,16 +341,77 @@
     img.src = frame;
   }
 
+  function wifiEscape(s){
+    return String(s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/:/g,'\\:').replace(/"/g,'\\"');
+  }
+
+  function buildWifiQrContent(cfg){
+    var ssid = cfg.ssid || '';
+    if(!ssid) return '';
+    var security = cfg.security === 'WEP' ? 'WEP' : (cfg.security === 'nopass' ? 'nopass' : 'WPA');
+    var passPart = security === 'nopass' ? '' : ('P:' + wifiEscape(cfg.wifiPassword || '') + ';');
+    return 'WIFI:T:' + security + ';S:' + wifiEscape(ssid) + ';' + passPart + ';';
+  }
+
+  function vcardEscape(s){
+    return String(s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+  }
+
+  function buildVCardContent(cfg){
+    var fullName = cfg.fullName || '';
+    if(!fullName) return '';
+    var lines = ['BEGIN:VCARD', 'VERSION:3.0'];
+    lines.push('N:' + vcardEscape(fullName) + ';;;;');
+    lines.push('FN:' + vcardEscape(fullName));
+    if(cfg.org) lines.push('ORG:' + vcardEscape(cfg.org));
+    if(cfg.jobTitle) lines.push('TITLE:' + vcardEscape(cfg.jobTitle));
+    if(cfg.phone) lines.push('TEL;TYPE=CELL:' + vcardEscape(cfg.phone));
+    if(cfg.email) lines.push('EMAIL:' + vcardEscape(cfg.email));
+    if(cfg.website) lines.push('URL:' + vcardEscape(cfg.website));
+    lines.push('END:VCARD');
+    return lines.join('\n');
+  }
+
   function renderQr(cfg){
-    var url = cfg.url || '';
+    var content = cfg.mode === 'wifi' ? buildWifiQrContent(cfg)
+      : cfg.mode === 'vcard' ? buildVCardContent(cfg)
+      : (cfg.url || '');
     var label = cfg.label || '';
-    if(!url){
-      stage.innerHTML = '<div class="w-empty"><span class="dot"></span><div>QR kód nemá vyplněný obsah.<br>Doplň adresu nebo text v administraci.</div></div>';
+    if(!content){
+      var msg = cfg.mode === 'wifi' ? 'Chybí název Wi-Fi sítě.<br>Doplň ho v administraci.'
+        : cfg.mode === 'vcard' ? 'Chybí jméno na vizitce.<br>Doplň ho v administraci.'
+        : 'QR kód nemá vyplněný obsah.<br>Doplň adresu nebo text v administraci.';
+      stage.innerHTML = '<div class="w-empty"><span class="dot"></span><div>'+msg+'</div></div>';
       return;
     }
-    var qrImgUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=' + encodeURIComponent(url);
+    var qrImgUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=' + encodeURIComponent(content);
+    var fallback = '';
+    if(cfg.mode === 'wifi'){
+      var ssidText = (cfg.ssid || '').replace(/</g,'&lt;');
+      var passLine = cfg.security === 'nopass' ? '' :
+        '<div class="line"><span class="k">Heslo:</span> '+(cfg.wifiPassword || '').replace(/</g,'&lt;')+'</div>';
+      fallback = '<div class="wifi-fallback">' +
+        '<div class="line"><span class="k">Síť:</span> '+ssidText+'</div>' +
+        passLine +
+        '<div class="hint">Nejde naskenovat? Připoj se ručně s údaji výše.</div>' +
+        '</div>';
+    } else if(cfg.mode === 'vcard'){
+      var esc = function(s){ return (s||'').replace(/</g,'&lt;'); };
+      var vlines = [];
+      if(cfg.org) vlines.push('<div class="line">'+esc(cfg.org)+(cfg.jobTitle?' &middot; '+esc(cfg.jobTitle):'')+'</div>');
+      else if(cfg.jobTitle) vlines.push('<div class="line">'+esc(cfg.jobTitle)+'</div>');
+      if(cfg.phone) vlines.push('<div class="line"><span class="k">Tel:</span> '+esc(cfg.phone)+'</div>');
+      if(cfg.email) vlines.push('<div class="line"><span class="k">E-mail:</span> '+esc(cfg.email)+'</div>');
+      if(cfg.website) vlines.push('<div class="line"><span class="k">Web:</span> '+esc(cfg.website)+'</div>');
+      fallback = '<div class="wifi-fallback">' +
+        '<div class="line" style="font-size:1.15em;font-weight:600;">'+esc(cfg.fullName)+'</div>' +
+        vlines.join('') +
+        '<div class="hint">Nejde naskenovat? Kontaktní údaje jsou výše.</div>' +
+        '</div>';
+    }
     stage.innerHTML = '<div class="w-qr"><img src="'+qrImgUrl+'" alt="QR kód">' +
-      (label ? '<div class="label">'+label.replace(/</g,'&lt;')+'</div>' : '') + '</div>';
+      (label ? '<div class="label">'+label.replace(/</g,'&lt;')+'</div>' : '') +
+      fallback + '</div>';
   }
 
   function renderCountdown(cfg){

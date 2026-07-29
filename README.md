@@ -89,7 +89,7 @@ vlastní widget ručně.
 | Počasí | zeměpisné souřadnice (nebo napiš název města a vyber ze seznamu) | aktuální stav + výhled na 4 dny, zdarma přes Open-Meteo, bez API klíče |
 | Fotorámeček | seznam URL adres obrázků | interval střídání v sekundách |
 | Textová deska | volný text | velikost písma |
-| QR kód | adresa nebo text | popisek pod kódem nepovinný, stejné bezplatné API jako párování |
+| QR kód | adresa/text, Wi-Fi přihlášení (síť, heslo, zabezpečení), nebo vizitka (jméno, firma, telefon, e-mail, web) | Wi-Fi a vizitka vygenerují QR, který telefon rozpozná nativně (nabídne připojení k síti / uložení kontaktu), ne jen otevření odkazu; oba mají i textový fallback pro případ, že se nedá naskenovat; popisek pod kódem nepovinný |
 | Odpočítávání | cílové datum a čas | dny/hod/min/sek do cíle, po dosažení zobrazí vlastní text; datum se ukládá jako přesný okamžik, takže sedí i displejům v jiné časové zóně |
 | Sdílení obrazovky (živě) | nic v kartě displeje | obraz se pouští z panelu „Sdílení obrazovky" v administraci — libovolná karta/obrazovka z počítače, jako snímky po ~1 vteřině, se třemi presety kvality; hodí se na přednášky. Vyžaduje prohlížeč s podporou `getDisplayMedia` (běžné desktopové Chrome/Edge/Firefox). |
 
