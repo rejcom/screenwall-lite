@@ -2,5 +2,8 @@
   "name": "screenlive",
   "private": true,
   "version": "1.2.0",
-  "description": "ScreenLive — old phones as ambient displays, with API-backed multi-user accounts and live screen-sharing."
+  "description": "ScreenLive — old phones as ambient displays, with API-backed multi-user accounts and live screen-sharing.",
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
+  }
 }
